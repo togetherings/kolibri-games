@@ -123,8 +123,12 @@
       setView([el("div", { class: "empty" }, [
         el("h2", { text: "Sign in to play" }),
         el("p", { text: "Games use your Kolibri account to save your results." }),
-        el("p", {}, [el("a", { class: "button primary", href: KOLIBRI_ROOT, text: "Go to Kolibri sign-in" })]),
-        el("p", { text: "After signing in, come back to this page." })
+        // Kolibri's sign-in page sends people back to "next" once they've signed in.
+        el("p", {}, [el("a", {
+          class: "button primary",
+          href: KOLIBRI_ROOT + "?next=" + encodeURIComponent(location.pathname + location.hash),
+          text: "Sign in"
+        })])
       ])]);
       return;
     }
