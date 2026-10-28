@@ -1,5 +1,8 @@
 # Making a game for Kolibri Games
 
+This page is about **Standalone Games**, which are played on the games page. For games that
+learners open from Learn (HTML5 apps with scoreboards), see [LESSON_GAMES.md](LESSON_GAMES.md).
+
 A game is a folder of ordinary web files plus a manifest:
 
 ```

@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "type": "lesson",
+  "id": "org.togetherings.singe",
+  "version": "0.24.0",
+  "title": "Studies In Geography",
+  "description": "Find regions, capitals and flags on maps.",
+  "color": "#2d5d8a",
+  "scoreboards": {
+    "saved_in": "scorm",
+    "board_label": "Map",
+    "fields": [
+      { "key": "acc", "from": 0, "label": "Accuracy", "unit": "%", "order": "desc" },
+      { "key": "time", "from": 1, "label": "Time", "seconds": true, "order": "asc" },
+      { "key": "plays", "from": 2, "label": "Times played", "combine": "sum" }
+    ],
+    "rank_by": ["acc", "time"],
+    "board_names": {
+      "sierra_leone": "Sierra Leone",
+      "us": "United States",
+      "world": "World",
+      "world_all": "World (all countries)"
+    },
+    "board_name_rules": [
+      { "suffix": "_capitals", "name": "{name}: capitals" },
+      { "suffix": "_flags", "name": "{name}: flags" },
+      { "name": "{name}: regions" }
+    ]
+  }
+}

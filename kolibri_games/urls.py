@@ -26,6 +26,7 @@ urlpatterns = [
     re_path(r"^api/games/%s/attempts/%s/abandon$" % (KEY, ATTEMPT), views.abandon, name="abandon"),
     re_path(r"^api/games/%s/call$" % KEY, views.call, name="call"),
     re_path(r"^api/games/%s/leaderboard$" % KEY, views.leaderboard, name="leaderboard"),
+    re_path(r"^api/games/%s/scoreboards$" % KEY, views.scoreboards, name="scoreboards"),
     re_path(r"^api/games/%s/mine$" % KEY, views.mine, name="mine"),
     re_path(r"^api/games/%s/state$" % KEY, views.state, name="state"),
     re_path(r"^api/games/%s/settings$" % KEY, views.settings, name="settings"),

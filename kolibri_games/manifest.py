@@ -20,6 +20,13 @@ COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 SETTING_TYPES = ("integer", "number", "boolean", "choice", "text")
 
+#: "standalone": played on the games page. "lesson": an HTML5 app in a Kolibri
+#: channel, opened from Learn; the games page shows scoreboards from its saved data.
+GAME_TYPES = ("standalone", "lesson")
+SAVED_IN = ("scorm",)
+COMBINE = ("best", "sum", "max")
+MAX_FIELDS = 8
+
 #: Settings every game has, managed by the platform rather than the game.
 PLATFORM_SETTINGS = [
     {
@@ -95,6 +102,12 @@ class Manifest(object):
         self.color = data.get("color", "#3b6e8f")
         self.authors = data.get("authors", [])
         self.license = data.get("license", "")
+        self.type = data.get("type", "standalone")
+        self.scoreboards = data.get("scoreboards")
+
+    @property
+    def is_lesson(self):
+        return self.type == "lesson"
 
     @property
     def has_scores(self):
@@ -102,6 +115,10 @@ class Manifest(object):
 
     def platform_settings_schema(self):
         schema = [dict(s) for s in PLATFORM_SETTINGS]
+        if self.is_lesson:
+            board = dict([f for f in schema if f["key"] == "leaderboard"][0])
+            board["label"] = "What learners see on the scoreboards"
+            return [board]
         for field in schema:
             if field["key"] == "counts":
                 field["default"] = (self.scoring or {}).get("counts", "first")
@@ -122,6 +139,8 @@ class Manifest(object):
             "authors": self.authors,
             "license": self.license,
             "validator": self.validator,
+            "type": self.type,
+            "scoreboards": self.scoreboards,
         }
 
 
@@ -155,6 +174,103 @@ def _check_setting(field, i, problems):
             clean_value(field, field["default"])
         except ValueError as e:
             problems.append("%s.default: %s" % (where, e))
+
+
+def _check_scoreboards(sb, problems):
+    """Checks the "scoreboards" section of a Lesson Game and returns it with defaults filled in."""
+    if not isinstance(sb, dict):
+        problems.append("Lesson Games need a scoreboards section that says how to read their saved data.")
+        return None
+    where = "scoreboards"
+    saved_in = sb.get("saved_in", "scorm")
+    if saved_in not in SAVED_IN:
+        problems.append("%s.saved_in must be one of %s." % (where, ", ".join(SAVED_IN)))
+    fields = sb.get("fields")
+    keys = {}
+    if not isinstance(fields, list) or not 0 < len(fields) <= MAX_FIELDS:
+        problems.append("%s.fields must list 1 to %d values to show." % (where, MAX_FIELDS))
+        fields = []
+    clean_fields = []
+    for i, f in enumerate(fields):
+        fw = "%s.fields[%d]" % (where, i)
+        if not isinstance(f, dict):
+            problems.append("%s must be an object." % fw)
+            continue
+        key = f.get("key")
+        if not isinstance(key, str) or not KEY_RE.match(key):
+            problems.append("%s.key must be lower_case letters, digits or _." % fw)
+        elif key in keys:
+            problems.append("%s.key '%s' is used twice." % (fw, key))
+        src = f.get("from", key)
+        if isinstance(src, bool) or not (
+            (isinstance(src, int) and 0 <= src < 100) or (isinstance(src, str) and 0 < len(src) <= 40)
+        ):
+            problems.append("%s.from must be a name (like \"acc\") or a position in a list (like 0)." % fw)
+        if not isinstance(f.get("label"), str) or not f["label"].strip():
+            problems.append("%s.label is required." % fw)
+        if f.get("order") not in (None, "asc", "desc"):
+            problems.append("%s.order must be 'asc' (lower is better) or 'desc' (higher is better)." % fw)
+        if f.get("combine", "best") not in COMBINE:
+            problems.append("%s.combine must be one of %s." % (fw, ", ".join(COMBINE)))
+        if not isinstance(f.get("decimals", 0), int) or isinstance(f.get("decimals", 0), bool):
+            problems.append("%s.decimals must be a whole number." % fw)
+        if "unit" in f and not isinstance(f["unit"], str):
+            problems.append("%s.unit must be text." % fw)
+        clean = {
+            "key": key,
+            "from": src,
+            "label": f.get("label"),
+            "unit": f.get("unit", ""),
+            "order": f.get("order"),
+            "combine": f.get("combine", "best"),
+            "decimals": f.get("decimals", 0),
+            "seconds": bool(f.get("seconds", False)),
+        }
+        keys[key] = clean
+        clean_fields.append(clean)
+    rank_by = sb.get("rank_by")
+    if not isinstance(rank_by, list) or not rank_by:
+        problems.append("%s.rank_by must list the values used to rank players, best first." % where)
+        rank_by = []
+    for k in rank_by:
+        if k not in keys:
+            problems.append("%s.rank_by: '%s' isn't one of the fields." % (where, k))
+        elif not keys[k]["order"]:
+            problems.append("%s.rank_by: give the field '%s' an order." % (where, k))
+        elif keys[k]["combine"] != "best":
+            problems.append("%s.rank_by: '%s' can't be used for ranking because it's combined with %s." % (where, k, keys[k]["combine"]))
+    only_if = sb.get("only_if")
+    if only_if is not None and not (isinstance(only_if, dict) and "from" in only_if and "equals" in only_if):
+        problems.append("%s.only_if needs 'from' and 'equals'." % where)
+    names = sb.get("board_names", {})
+    if not isinstance(names, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in names.items()):
+        problems.append("%s.board_names must map board ids to names." % where)
+        names = {}
+    rules = sb.get("board_name_rules", [])
+    if not isinstance(rules, list):
+        problems.append("%s.board_name_rules must be a list." % where)
+        rules = []
+    for i, r in enumerate(rules):
+        if not (
+            isinstance(r, dict)
+            and isinstance(r.get("name"), str)
+            and isinstance(r.get("prefix", ""), str)
+            and isinstance(r.get("suffix", ""), str)
+        ):
+            problems.append("%s.board_name_rules[%d] needs a name, and an optional prefix and suffix." % (where, i))
+    label = sb.get("board_label", "Scoreboard")
+    if not isinstance(label, str) or not label.strip():
+        problems.append("%s.board_label must be text." % where)
+    return {
+        "saved_in": saved_in,
+        "fields": clean_fields,
+        "rank_by": list(rank_by),
+        "only_if": only_if,
+        "board_label": label,
+        "board_names": names,
+        "board_name_rules": rules,
+        "name_boards_after_resource": bool(sb.get("name_boards_after_resource", False)),
+    }
 
 
 def validate(data):
@@ -192,6 +308,17 @@ def validate(data):
         problems.append("requires_platform must look like '>=0.1' or '>=0.1,<2'.")
     if "validator" in data and not (isinstance(data["validator"], str) and NAME_RE.match(data["validator"])):
         problems.append("validator must be a validator name like 'number-hunt'.")
+    gtype = data.get("type", "standalone")
+    if gtype not in GAME_TYPES:
+        problems.append("type must be 'standalone' or 'lesson'.")
+    scoreboards = None
+    if gtype == "lesson":
+        for name in ("validator", "scoring", "settings", "data"):
+            if name in data:
+                problems.append("Lesson Games can't use '%s'. Their scores come from their saved data." % name)
+        scoreboards = _check_scoreboards(data.get("scoreboards"), problems)
+    elif "scoreboards" in data:
+        problems.append("scoreboards is only for Lesson Games (type 'lesson').")
 
     scoring = data.get("scoring")
     if scoring is not None:
@@ -245,6 +372,9 @@ def validate(data):
             "max": scoring.get("max"),
         }
     clean["entry"] = safe_relpath(data.get("entry", "index.html"))
+    clean["type"] = gtype
+    if scoreboards is not None:
+        clean["scoreboards"] = scoreboards
     return Manifest(clean)
 
 

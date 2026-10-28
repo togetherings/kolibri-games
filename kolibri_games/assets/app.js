@@ -212,7 +212,43 @@
     ]);
   }
 
+  function plural(n, word) {
+    word = String(word || "").toLowerCase();
+    return n + " " + (n === 1 ? word : word.replace(/y$/, "ie") + "s");
+  }
+
+  // Learn's page for one resource. The games page is at <prefix>/<lang>/kolibri_games/,
+  // and Learn is at <prefix>/<lang>/learn/.
+  function learnUrl(nodeId) {
+    return "../learn/#/topics/c/" + encodeURIComponent(nodeId);
+  }
+
+  function lessonCard(g) {
+    var s = g.summary || {};
+    var label = (g.scoreboards && g.scoreboards.board_label) || "Scoreboard";
+    var facts = [
+      el("span", { class: "tag lesson", text: "Lesson Game" }),
+      el("span", { text: plural((g.resources || []).length, "resource") + " in Learn" }),
+      el("span", { text: s.boards ? "You have scores on " + plural(s.boards, label) : "No scores from you yet" })
+    ];
+    var actions = [el("a", { class: "button primary", href: "#/scores/" + g.key, text: "Scoreboards" })];
+    if ((g.resources || []).length === 1) {
+      actions.push(el("a", { class: "button quiet", href: learnUrl(g.resources[0].node_id), text: "Open in Learn" }));
+    }
+    if (S.me.role !== "learner") actions.push(el("a", { class: "button quiet", href: "#/settings/" + g.key, text: "Settings" }));
+    return el("li", { class: "game" }, [
+      el("img", { class: "game-icon", src: "api/games/" + g.key + "/icon", alt: "" }),
+      el("div", {}, [
+        el("h2", { text: g.title }),
+        g.description ? el("p", { class: "desc", text: g.description }) : null,
+        el("div", { class: "facts" }, facts)
+      ]),
+      el("div", { class: "row" }, actions)
+    ]);
+  }
+
   function gameCard(g) {
+    if (g.type === "lesson" && g.playable) return lessonCard(g);
     var unplayable = !g.playable;
     var facts = [];
     var s = g.summary;
@@ -488,6 +524,104 @@
     ]);
   }
 
+  // ----------------------------------------------------------- scoreboards
+
+  function fieldText(f, v) {
+    if (v === null || v === undefined) return "";
+    if (f.seconds) return clock(v);
+    var n = Number(v).toFixed(f.decimals || 0);
+    if (!f.unit) return n;
+    return f.unit === "%" ? n + "%" : n + " " + f.unit;
+  }
+
+  function renderScores(key, boardId, classId) {
+    stopPlay();
+    findGame(key).then(function (g) {
+      var q = classId ? "?class=" + encodeURIComponent(classId) : "";
+      return Promise.all([
+        api("api/games/" + encodeURIComponent(key) + "/scoreboards" + q),
+        S.me.role !== "learner" ? classPicker(classId, function (v) { renderScores(key, boardId, v); }, true) : null
+      ]).then(function (res) { drawScores(g, res[0], res[1], boardId, classId); });
+    }).catch(showError);
+  }
+
+  function drawScores(g, data, picker, boardId, classId) {
+    var spec = data.spec;
+    var coach = S.me.role !== "learner";
+    var csv = "api/games/" + encodeURIComponent(g.key) + "/scoreboards?format=csv" + (classId ? "&class=" + encodeURIComponent(classId) : "");
+    var head = el("div", { class: "page-head" }, [
+      el("div", {}, [
+        el("a", { class: "crumb", href: "#/", text: "Games" }),
+        el("h1", { text: g.title + " scoreboards" }),
+        el("p", { text: "Scores from playing " + g.title + " in Learn. Each learner's best result counts." })
+      ]),
+      el("div", { class: "row" }, [picker, coach && data.boards.length ? el("a", { class: "button", href: csv, text: "Download CSV" }) : null])
+    ]);
+    var notes = [];
+    if (data.visibility === "hidden") notes.push("Your coach has hidden other players' results.");
+    if (data.visibility === "initials") notes.push("Other players are shown by their initials.");
+    notes.push("These scores come from the game itself, so the server doesn't check them.");
+    var footer = notes.map(function (n) { return el("p", { class: "footnote", text: n }); });
+
+    if (!data.boards.length) {
+      setView([head, el("div", { class: "empty" }, [
+        el("h2", { text: "No scores yet" }),
+        el("p", { text: classId ? "No one in this class has a score yet." : "Scores appear here after learners play " + g.title + " in Learn." }),
+        resourceLinks(data.resources)
+      ])].concat(footer), { title: g.title });
+      return;
+    }
+    var board = data.boards.filter(function (b) { return b.id === boardId; })[0] || data.boards[0];
+    var nav = el("nav", { class: "boards", "aria-label": spec.board_label });
+    data.boards.forEach(function (b) {
+      var mine = b.mine ? "You: " + rankWord(b.mine.rank) + " of " + b.players : plural(b.players, "player");
+      nav.appendChild(el("a", {
+        class: "board-link" + (b === board ? " current" : ""),
+        href: "#/scores/" + g.key + "/" + encodeURIComponent(b.id) + (classId ? "/" + classId : ""),
+        "aria-current": b === board ? "page" : null
+      }, [el("span", { class: "board-name", text: b.name }), el("span", { class: "board-sub", text: mine })]));
+    });
+    setView([head, el("div", { class: "scores" }, [nav, boardPanel(spec, board)])].concat(footer), { title: g.title, keepScroll: !!boardId });
+  }
+
+  function rankWord(rank) {
+    var n = rank % 100, s = n > 10 && n < 14 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[rank % 10] || "th");
+    return rank + s;
+  }
+
+  function resourceLinks(resources) {
+    if (!resources || !resources.length) return null;
+    return el("p", {}, ["Open in Learn: "].concat(resources.map(function (r, i) {
+      return [i ? ", " : "", el("a", { href: learnUrl(r.node_id), text: r.title })];
+    }).reduce(function (a, b) { return a.concat(b); }, [])));
+  }
+
+  function boardPanel(spec, board) {
+    var fields = spec.fields;
+    var tbody = el("tbody");
+    board.rows.forEach(function (r) {
+      tbody.appendChild(el("tr", { class: r.me ? "me" : "" }, [
+        el("td", {}, [el("span", { class: "rank r" + r.rank, text: String(r.rank) })]),
+        el("td", { text: r.name + (r.me ? " (you)" : "") })
+      ].concat(fields.map(function (f) { return el("td", { class: "num", text: fieldText(f, r.values[f.key]) }); }))));
+    });
+    var table = el("table", {}, [
+      el("thead", {}, [el("tr", {}, [el("th", { text: "Rank" }), el("th", { text: "Name" })].concat(
+        fields.map(function (f) { return el("th", { class: "num", text: f.label }); })))]),
+      tbody
+    ]);
+    var ranked = spec.rank_by.map(function (k) {
+      var f = fields.filter(function (x) { return x.key === k; })[0];
+      return f.label.toLowerCase() + (f.order === "asc" ? " (lower is better)" : "");
+    });
+    return el("section", { class: "panel board" }, [
+      el("h2", { text: board.name }),
+      el("p", { class: "footnote", text: "Ranked by " + ranked.join(", then ") + "." }),
+      board.rows.length ? table : el("p", { text: "You don't have a score here yet." }),
+      resourceLinks(board.resources)
+    ]);
+  }
+
   // --------------------------------------------------------------- results
 
   function renderResults(key, classId) {
@@ -664,7 +798,9 @@
       el("div", { class: "page-head" }, [el("div", {}, [
         el("a", { class: "crumb", href: "#/", text: "Games" }),
         el("h1", { text: g.title + " settings" }),
-        el("p", { text: "These settings apply to everyone in your facility. Changes apply to attempts started after you save." })
+        el("p", { text: g.type === "lesson"
+          ? "These settings apply to everyone in your facility."
+          : "These settings apply to everyone in your facility. Changes apply to attempts started after you save." })
       ])]),
       form
     ], { title: g.title });
@@ -680,7 +816,7 @@
         rows.appendChild(el("tr", {}, [
           el("td", {}, [g.title, g.playable ? el("span", { class: "tag ok", text: "ready" }) : el("span", { class: "tag warn", text: "can't play" })]),
           el("td", { text: (g.version || "") }),
-          el("td", { text: g.origin === "channel" ? "Channel" : "Local folder" }),
+          el("td", { text: (g.origin === "channel" ? "Channel" : "Local folder") + (g.type === "lesson" ? " (Lesson Game, " + plural(g.content.resources.length, "resource") + ")" : "") }),
           el("td", {}, [el("code", { text: g.location }),
             g.problems.length ? el("ul", { class: "problems" }, g.problems.map(function (p) { return el("li", { text: p }); })) : null])
         ]));
@@ -718,6 +854,7 @@
     var name = parts[0], key = parts[1] ? decodeURIComponent(parts[1]) : null;
     if (name === "play" && key) return renderPlay(key);
     if (name === "board" && key) return renderBoard(key);
+    if (name === "scores" && key) return renderScores(key, parts[2] ? decodeURIComponent(parts[2]) : null, parts[3] || null);
     if (name === "results" && key) return renderResults(key);
     if (name === "settings" && key) return renderSettings(key);
     if (name === "status") return renderStatus();

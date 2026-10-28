@@ -1,14 +1,19 @@
 """
 Finds games on this device:
 
-* ZIM resources in Kolibri channels that contain a ``kolibri-game.json``
-  (normal ZIMs, like Wikipedia, are ignored)
-* games placed in the local games folders (``$KOLIBRI_HOME/kolibri_games/games``
-  and any folders in ``KOLIBRI_GAMES_PATH``), either as .zim files or as
-  plain folders, which is handy while making a game
+* Standalone Games: ZIM resources in Kolibri channels that contain a
+  ``kolibri-game.json`` (normal ZIMs, like Wikipedia, are ignored)
+* Standalone Games placed in the local games folders
+  (``$KOLIBRI_HOME/kolibri_games/games`` and any folders in
+  ``KOLIBRI_GAMES_PATH``), either as .zim files or as plain folders, which is
+  handy while making a game
+* Lesson Games: HTML5 app resources (.zip) in Kolibri channels that contain a
+  ``kolibri-game.json`` with ``"type": "lesson"``. Every resource with the same
+  manifest id is one game. Other HTML5 apps are left alone.
 
 Each game gets a stable *key* used in URLs and in the database:
-``c-<content_id>`` for channel games, ``l-<manifest id>`` for local games.
+``c-<content_id>`` for channel games, ``l-<manifest id>`` for local games and
+``g-<manifest id>`` for Lesson Games.
 """
 import json
 import logging
@@ -18,9 +23,10 @@ import threading
 import time
 
 from . import __version__
+from . import lessons
 from . import validators
 from .manifest import ManifestError
-from .sources import FolderSource, SourceError, ZimSource
+from .sources import FolderSource, SourceError, ZimSource, ZipSource
 from .versions import satisfies
 
 logger = logging.getLogger(__name__)
@@ -76,6 +82,10 @@ def data_sources():
 
 
 class GameEntry(object):
+    """A Standalone Game, or a file that looks like a game but can't be used."""
+
+    is_lesson = False
+
     def __init__(self, key, source, origin, manifest=None, problems=None, content=None):
         self.key = key
         self.source = source
@@ -103,6 +113,7 @@ class GameEntry(object):
             "key": self.key,
             "origin": self.origin,
             "kind": self.source.kind,
+            "type": self.manifest.type if self.manifest else None,
             "location": self.source.location,
             "title": self.title,
             "version": self.manifest.version if self.manifest else None,
@@ -116,6 +127,11 @@ class GameEntry(object):
 def check(manifest, source):
     """Reasons this device can't run the game (empty list = playable)."""
     problems = []
+    if manifest.is_lesson:
+        return [
+            "This is a Lesson Game. Lesson Games are HTML5 apps: add its .zip to a channel "
+            "(for example with Kolibri Studio) so learners open it from Learn."
+        ]
     if manifest.requires_platform and not satisfies(__version__, manifest.requires_platform):
         problems.append(
             "This game needs Kolibri Games %s, but this device has %s. Ask your administrator to update the Kolibri Games plugin."
@@ -163,8 +179,8 @@ def _local_games():
     return entries
 
 
-def _channel_zims():
-    """(path, content dict) for every available ZIM file in Kolibri's channels."""
+def _channel_files(extension, kind=None, preset=None):
+    """(path, content dict, file id) for every available file of this type in Kolibri's channels."""
     try:
         from kolibri.core.content.models import File
         from kolibri.core.content.utils.paths import get_content_storage_file_path
@@ -172,35 +188,88 @@ def _channel_zims():
         return []
     found = []
     try:
-        files = (
-            File.objects.filter(local_file__extension="zim", local_file__available=True)
-            .select_related("local_file", "contentnode")
-            .order_by("contentnode__title")
-        )
-        for f in files:
+        files = File.objects.filter(local_file__extension=extension, local_file__available=True)
+        if kind:
+            files = files.filter(contentnode__kind=kind, contentnode__available=True)
+        if preset:
+            files = files.filter(preset=preset)
+        for f in files.select_related("local_file", "contentnode").order_by("contentnode__title"):
             node = f.contentnode
-            filename = "%s.%s" % (f.local_file.id, f.local_file.extension)
-            path = get_content_storage_file_path(filename)
+            path = get_content_storage_file_path("%s.%s" % (f.local_file.id, f.local_file.extension))
             if path and os.path.isfile(path):
-                found.append(
-                    (
-                        path,
-                        {
-                            "content_id": node.content_id,
-                            "node_id": node.id,
-                            "title": node.title,
-                            "channel_id": node.channel_id,
-                        },
-                    )
-                )
+                content = {
+                    "content_id": node.content_id,
+                    "node_id": node.id,
+                    "title": node.title,
+                    "channel_id": node.channel_id,
+                }
+                found.append((path, content, f.local_file.id))
     except Exception:
-        logger.exception("Kolibri Games: could not list ZIM files in channels")
+        logger.exception("Kolibri Games: could not list %s files in channels", extension)
     return found
+
+
+#: Lesson Game resources added by the preview server: [(source, content dict)].
+PREVIEW_LESSONS = []
+
+# file id (a checksum, so the file never changes) -> (manifest or None, problems)
+_zip_cache = {}
+
+
+def _zip_manifest(path, file_id):
+    if file_id in _zip_cache:
+        return _zip_cache[file_id]
+    source = ZipSource(path)
+    result = (None, [])
+    if source.has_manifest():
+        try:
+            result = (source.manifest(), [])
+        except (ManifestError, SourceError) as e:
+            result = (None, e.problems if isinstance(e, ManifestError) else [str(e)])
+        except Exception as e:  # bad UTF-8, ...
+            result = (None, [str(e)])
+    else:
+        result = (False, [])
+    if len(_zip_cache) > 5000:
+        _zip_cache.clear()
+    _zip_cache[file_id] = result
+    return result
+
+
+def _lesson_games():
+    """(Lesson Games, entries for broken ones)."""
+    resources, broken = [], []
+    found = [(ZipSource(p), c, fid) for p, c, fid in _channel_files("zip", kind="html5", preset="html5_zip")]
+    found += [(s, c, None) for s, c in PREVIEW_LESSONS]
+    for source, content, file_id in found:
+        if file_id is not None:
+            manifest, problems = _zip_manifest(source.location, file_id)
+        else:
+            try:
+                manifest, problems = source.manifest(), []
+            except (ManifestError, SourceError) as e:
+                manifest, problems = None, e.problems if isinstance(e, ManifestError) else [str(e)]
+        if manifest is False:
+            continue  # an ordinary HTML5 app
+        if manifest is None:
+            broken.append(GameEntry("c-" + content["content_id"], source, "channel", None,
+                                    ["Invalid game: %s" % p for p in problems], content))
+        elif not manifest.is_lesson:
+            broken.append(GameEntry("c-" + content["content_id"], source, "channel", None,
+                                    ["This HTML5 app has a kolibri-game.json for a Standalone Game. "
+                                     "Standalone Games are packed as .zim files (see kolibri-games-pack)."], content))
+        elif manifest.requires_platform and not satisfies(__version__, manifest.requires_platform):
+            broken.append(GameEntry("c-" + content["content_id"], source, "channel", None,
+                                    ["This game needs Kolibri Games %s, but this device has %s."
+                                     % (manifest.requires_platform, __version__)], content))
+        else:
+            resources.append(lessons.LessonResource(source, manifest, content))
+    return lessons.group_resources(resources), broken
 
 
 def _channel_games():
     entries = []
-    for path, content in _channel_zims():
+    for path, content, _file_id in _channel_files("zim"):
         source = ZimSource(path)
         if source.has_manifest():
             entries.append(_load("c-" + content["content_id"], source, "channel", content))
@@ -217,7 +286,8 @@ def discover(refresh=False):
         if not refresh and _cache["games"] is not None and time.time() - _cache["at"] < CACHE_SECONDS:
             return _cache["games"]
         games, seen = [], {}
-        for entry in _channel_games() + _local_games():
+        lesson_games, broken = _lesson_games()
+        for entry in _channel_games() + _local_games() + lesson_games + broken:
             if entry.key in seen:
                 seen[entry.key].problems.append(
                     "Another copy of this game was also found at %s and ignored." % entry.source.location

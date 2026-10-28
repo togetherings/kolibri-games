@@ -48,40 +48,50 @@ on Kolibri's internal migration history.
 | `GameSettings` | Coach settings per game per facility: platform rules and the game's own options. |
 | `PlayerState` | Up to 64 KB of saved data per game per learner. |
 
+Lesson Games add no tables. Their scores are read when needed from Kolibri's own
+`ContentSummaryLog.extra_fields["contentState"]["SCORM"]`, where Kolibri keeps what an HTML5 app
+saves. Those logs sync between Kolibri servers, unlike the plugin's tables. Scoreboard settings
+use `GameSettings` under the key `g-<manifest id>`.
+
 Which attempt counts is worked out when results are read, not stored: in *first* mode it's the
 learner's earliest attempt that hasn't been reset, so leaving an attempt unfinished doesn't give
 a second chance. Leaderboards use standard competition ranking.
 
 ## Finding games
 
-`registry.discover()` looks in two places and caches the result for a few seconds:
+`registry.discover()` looks in three places and caches the result for a few seconds:
 
 1. **Kolibri channels:** every available `.zim` resource that contains `kolibri-game.json`
    (other ZIMs, like Wikipedia, are skipped). Key: `c-<content_id>`, stable across channel
    updates.
 2. **Local folders:** `<KOLIBRI_HOME>/kolibri_games/games/` and anything in
    `KOLIBRI_GAMES_PATH`, as `.zim` files or plain folders. Key: `l-<manifest id>`.
+3. **Lesson Games:** every available HTML5 app (`html5_zip`) in a channel whose zip contains a
+   `kolibri-game.json` with `"type": "lesson"`. Each zip is opened once and the answer is kept
+   by file checksum, so ordinary HTML5 apps cost one look. Resources with the same manifest id
+   form one game. Key: `g-<manifest id>`. See [LESSON_GAMES.md](LESSON_GAMES.md).
 
 Each game is checked against this device: plugin version (`requires_platform`), rule checker
 installed, data sources configured, start page present. Problems are shown instead of a broken game.
 
 ## Shared code
 
-`service.py`, `ranking.py`, `manifest.py`, `registry.py`, `sources.py` and `views_common.py`
-don't import Django, so the same rules run in Kolibri (`store_django.py` + `views.py`), in the
+`service.py`, `ranking.py`, `lessons.py`, `manifest.py`, `registry.py`, `sources.py` and
+`views_common.py` don't import Django, so the same rules run in Kolibri (`store_django.py` + `views.py`), in the
 unit tests and in the preview server (`devserver.py`, memory store).
 
 ## Not done yet (next steps)
 
-- **Showing games inside Kolibri's Learn page.** Today the games page is its own address. Showing
-  game ZIMs as resources in Learn, reporting completion to Kolibri's coach reports and adding a
-  side-menu link needs a content renderer built with Kolibri's front-end tooling. When that's
+- **Showing Standalone Games inside Kolibri's Learn page.** Today they're played on the games
+  page (linked from Kolibri's side menu). Showing game ZIMs as resources in Learn and reporting
+  completion to Kolibri's coach reports needs a content renderer built with Kolibri's front-end
+  tooling. (Lesson Games already live in Learn.) When that's
   added, the plugin will claim the `zim` file type, show games in a sandbox inside Learn, and
   fall back to a simple viewer for ordinary ZIMs (so it shouldn't be enabled together with
   kolibri-zim-plugin).
 - **Testing Studio uploads.** Confirm that Kolibri Studio accepts game ZIMs as resources and
   that Kolibri imports them. The sample game ZIMs in each release are meant for that test.
-- **Per-class settings and scheduled challenges** (open and close dates, routes revealed after
-  a challenge closes).
+- **Challenges for Standalone Games**: coaches set up a challenge for a class (open and close
+  dates, game options, routes revealed after it closes), next to free play.
 - **Wiki Race** as a game with a rule checker that reads the device's Wikipedia ZIM through a
   data source.

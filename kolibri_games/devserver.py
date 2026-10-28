@@ -3,9 +3,12 @@ Preview server for game authors: runs the real games page, SDK and game rules
 without Kolibri, with pretend users and everything kept in memory.
 
     python -m kolibri_games.devserver path/to/games-folder [--port 8765]
+        [--lessons examples/lesson-games/preview.json]
 
 Then open http://127.0.0.1:8765/ and switch between pretend learners and a
-coach with the bar at the bottom of the page. Only uses the standard library.
+coach with the bar at the bottom of the page. ``--lessons`` adds Lesson Games
+with pretend saved data, as if learners had played them in Learn (see
+examples/lesson-games/preview.json). Only uses the standard library.
 """
 import argparse
 import base64
@@ -21,6 +24,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from . import API_VERSION, __version__, registry, validators, views_common
 from .service import GameService, MemoryStore, PlatformError, Player
+from .sources import open_source
 
 FACILITY = "f" * 32
 CLASS_ID = "e" * 32
@@ -34,7 +38,23 @@ CLASS_MEMBERS = ["amina", "ben"]
 SECRET = secrets.token_bytes(32)
 ASSETS = os.path.join(os.path.dirname(__file__), "assets")
 
-service = GameService(MemoryStore())
+store = MemoryStore()
+service = GameService(store)
+
+
+def load_lessons(path):
+    """Add the Lesson Game resources and pretend saved data described in a JSON file."""
+    with open(path, encoding="utf-8") as f:
+        spec = json.load(f)
+    base = os.path.dirname(os.path.abspath(path))
+    for r in spec.get("resources", []):
+        content = {k: r[k] for k in ("content_id", "node_id", "title")}
+        content["channel_id"] = r.get("channel_id", "0" * 32)
+        registry.PREVIEW_LESSONS.append((open_source(os.path.join(base, r["source"])), content))
+    for save in spec.get("saves", []):
+        data = save["suspend_data"]
+        state = {"SCORM": {"cmi": {"suspend_data": data if isinstance(data, str) else json.dumps(data)}}}
+        store.add_lesson_save(USERS[save["user"]], save["content_id"], state)
 
 
 def sign(payload):
@@ -169,6 +189,8 @@ class Handler(BaseHTTPRequestHandler):
         game = registry.get(key)
         if game is None:
             raise PlatformError("That game isn't on this device.", "not_found", 404)
+        if playable and game.is_lesson:
+            raise PlatformError("This is a Lesson Game. Open it from Learn.", "lesson_game", 409)
         if playable and not game.playable:
             raise PlatformError(" ".join(game.problems), "unplayable", 409)
         return game
@@ -230,6 +252,15 @@ class Handler(BaseHTTPRequestHandler):
             users = self.class_users(query.get("class")) if player.is_coach else None
             ids = {u for u, _ in users} if users else None
             return self.json(200, service.leaderboard(self.game(key, playable=False), player, user_ids=ids))
+        if rest == ["scoreboards"]:
+            users = self.class_users(query.get("class")) if player.is_coach else None
+            ids = {u for u, _ in users} if users else None
+            data = service.scoreboards(self.game(key, playable=False), player, user_ids=ids)
+            if query.get("format") == "csv":
+                self.require(player, coach=True)
+                return self.send(200, views_common.scoreboards_csv(data), "text/csv; charset=utf-8",
+                                 {"Content-Disposition": 'attachment; filename="scores.csv"'})
+            return self.json(200, data)
         if rest == ["mine"]:
             return self.json(200, {"attempts": service.my_attempts(self.game(key, playable=False), player)})
         if rest == ["state"]:
@@ -271,10 +302,13 @@ def main(argv=None):
     parser.add_argument("folders", nargs="*", help="Folders containing games (folders or .zim files).")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--lessons", help="JSON file with Lesson Game resources and pretend saved data.")
     args = parser.parse_args(argv)
     if args.folders:
         os.environ["KOLIBRI_GAMES_PATH"] = os.pathsep.join(os.path.abspath(f) for f in args.folders)
     os.environ.setdefault("KOLIBRI_HOME", os.path.join(os.path.expanduser("~"), ".kolibri-games-preview"))
+    if args.lessons:
+        load_lessons(args.lessons)
     games = registry.discover(refresh=True)
     print("Kolibri Games preview %s" % __version__)
     for g in games:

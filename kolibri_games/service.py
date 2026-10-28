@@ -8,7 +8,7 @@ and in tests or the developer preview server (``MemoryStore``).
 import json
 from datetime import datetime, timezone
 
-from . import ranking
+from . import lessons, ranking
 from . import validators as validator_registry
 from .manifest import clean_settings, merge_settings
 from .validators import ValidatorContext, ValidatorError
@@ -84,6 +84,11 @@ class Store(object):
         raise NotImplementedError
 
     def state_set(self, game_key, user_id, data):
+        raise NotImplementedError
+
+    def lesson_saves(self, content_ids, facility_id, user_id=None):
+        """Saved data of Lesson Game resources: a list of dicts with
+        user_id, user_name, content_id and content_state (Kolibri's saved state)."""
         raise NotImplementedError
 
 
@@ -339,6 +344,9 @@ class GameService(object):
 
     def summary(self, game, player):
         """The player's own standing, for game cards and the hello message."""
+        if game.manifest.is_lesson:
+            mine = self.store.lesson_saves(game.content_ids, player.facility_id, player.id)
+            return lessons.summary(game, mine)
         platform_settings, _ = self.settings(game, player.facility_id)
         counts = platform_settings.get("counts", "first")
         mine = [a for a in self.store.attempts(game.key, player.facility_id, player.id) if not a.voided]
@@ -350,6 +358,17 @@ class GameService(object):
             first = ranking.first_attempt(mine)
             result["first_used"] = first is not None
         return result
+
+    def scoreboards(self, game, viewer, user_ids=None):
+        """Scoreboards of a Lesson Game, read from Kolibri's saved data."""
+        if not game.manifest.is_lesson:
+            raise PlatformError("This game has no scoreboards.", "not_lesson", 404)
+        platform_settings, _ = self.settings(game, viewer.facility_id)
+        visibility = "names" if viewer.is_coach else platform_settings.get("leaderboard", "names")
+        saves = self.store.lesson_saves(game.content_ids, viewer.facility_id)
+        if user_ids is not None:
+            saves = [s for s in saves if s["user_id"] in user_ids]
+        return lessons.scoreboards(game, saves, viewer.id, visibility)
 
     def my_attempts(self, game, player):
         platform_settings, _ = self.settings(game, player.facility_id)
@@ -437,6 +456,7 @@ class MemoryStore(Store):
         self._settings = {}
         self._attempts = []
         self._state = {}
+        self._saves = []
 
     def settings_get(self, game_key, facility_id):
         return self._settings.get((game_key, facility_id))
@@ -476,3 +496,26 @@ class MemoryStore(Store):
 
     def state_set(self, game_key, user_id, data):
         self._state[(game_key, user_id)] = data
+
+    def add_lesson_save(self, player, content_id, content_state):
+        """Pretend a learner played a Lesson Game resource in Learn (tests and the preview server)."""
+        self._saves = [
+            s for s in self._saves if not (s["user_id"] == player.id and s["content_id"] == content_id)
+        ]
+        self._saves.append(
+            {
+                "user_id": player.id,
+                "user_name": player.name,
+                "facility_id": player.facility_id,
+                "content_id": content_id,
+                "content_state": content_state,
+            }
+        )
+
+    def lesson_saves(self, content_ids, facility_id, user_id=None):
+        wanted = set(content_ids)
+        return [
+            s
+            for s in self._saves
+            if s["content_id"] in wanted and s["facility_id"] == facility_id and (user_id is None or s["user_id"] == user_id)
+        ]

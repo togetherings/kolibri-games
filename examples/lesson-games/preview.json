@@ -1,0 +1,124 @@
+{
+ "_about": "Pretend Lesson Game resources and saved data for the preview server: kolibri-games-preview games --lessons examples/lesson-games/preview.json",
+ "resources": [
+  {
+   "source": "lit",
+   "content_id": "11111111111111111111111111111111",
+   "node_id": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+   "title": "Lesson 1: Left-hand home keys"
+  },
+  {
+   "source": "lit",
+   "content_id": "22222222222222222222222222222222",
+   "node_id": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+   "title": "Lesson 2: Right-hand home keys"
+  },
+  {
+   "source": "lit",
+   "content_id": "33333333333333333333333333333333",
+   "node_id": "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+   "title": "Lesson 10: Numbers"
+  },
+  {
+   "source": "singe",
+   "content_id": "44444444444444444444444444444444",
+   "node_id": "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4",
+   "title": "Maps of Sierra Leone"
+  },
+  {
+   "source": "singe",
+   "content_id": "55555555555555555555555555555555",
+   "node_id": "b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5",
+   "title": "Maps of the world"
+  }
+ ],
+ "saves": [
+  {
+   "user": "amina",
+   "content_id": "11111111111111111111111111111111",
+   "suspend_data": {
+    "en-01": {
+     "done": 1,
+     "acc": 96,
+     "wpm": 14
+    }
+   }
+  },
+  {
+   "user": "ben",
+   "content_id": "11111111111111111111111111111111",
+   "suspend_data": {
+    "en-01": {
+     "done": 1,
+     "acc": 98,
+     "wpm": 11
+    }
+   }
+  },
+  {
+   "user": "amina",
+   "content_id": "22222222222222222222222222222222",
+   "suspend_data": {
+    "en-02": {
+     "done": 0,
+     "acc": 0,
+     "wpm": 0
+    }
+   }
+  },
+  {
+   "user": "ben",
+   "content_id": "22222222222222222222222222222222",
+   "suspend_data": {
+    "en-02": {
+     "done": 1,
+     "acc": 91,
+     "wpm": 12
+    }
+   }
+  },
+  {
+   "user": "amina",
+   "content_id": "44444444444444444444444444444444",
+   "suspend_data": {
+    "sierra_leone": [
+     92,
+     140,
+     5
+    ],
+    "sierra_leone_capitals": [
+     80,
+     210,
+     2
+    ]
+   }
+  },
+  {
+   "user": "ben",
+   "content_id": "44444444444444444444444444444444",
+   "suspend_data": {
+    "sierra_leone": [
+     92,
+     120,
+     1
+    ]
+   }
+  },
+  {
+   "user": "amina",
+   "content_id": "55555555555555555555555555555555",
+   "suspend_data": {
+    "sierra_leone": [
+     100,
+     300,
+     1
+    ],
+    "world_all_flags": [
+     64,
+     900,
+     3
+    ]
+   }
+  }
+ ]
+}

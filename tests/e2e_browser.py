@@ -20,6 +20,7 @@ def serve(port):
     os.environ["KOLIBRI_GAMES_DEV_QUIET"] = "1"
     from kolibri_games import devserver, registry
 
+    devserver.load_lessons(os.path.join(ROOT, "examples", "lesson-games", "preview.json"))
     registry.discover(refresh=True)
     server = ThreadingHTTPServer(("127.0.0.1", port), devserver.Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -89,7 +90,7 @@ def main():
             # Lobby as Amina
             page.goto(base + "?as=amina")
             page.locator(".game").first.wait_for()
-            assert page.locator(".game").count() == 2, "expected two games"
+            assert page.locator(".game").count() == 4, "expected two Standalone Games and two Lesson Games"
             if shots:
                 page.screenshot(path=os.path.join(shots, "1-lobby.png"), full_page=True)
 
@@ -164,6 +165,40 @@ def main():
             frame = page.frame_locator("iframe.game-frame")
             frame.locator("#intro-high").wait_for()
             assert frame.locator("#intro-high").inner_text() == "20"
+
+            # Lesson Games: scoreboards read from (pretend) saved data in Learn
+            page.goto(base + "?as=amina#/")
+            card = page.locator(".game", has_text="Studies In Geography")
+            assert "scores on 3 maps" in card.inner_text(), card.inner_text()
+            card.locator("text=Scoreboards").click()
+            page.locator(".scores").wait_for()
+            page.locator(".board-link", has_text="Sierra Leone: regions").click()
+            page.locator(".panel.board h2:has-text('Sierra Leone: regions')").wait_for()
+            rows = page.locator(".panel.board tbody tr")
+            first = rows.nth(0).inner_text()
+            # Amina's two saves of this map (in two resources) are merged: best accuracy, plays added up.
+            assert "Amina Learner (you)" in first and "100%" in first and "5:00" in first and "6" in first, first
+            assert "Maps of the world" in page.locator(".panel.board").inner_text()
+            if shots:
+                page.screenshot(path=os.path.join(shots, "9-lesson-scoreboards.png"), full_page=True)
+            # LIT: unfinished lessons ("done": 0) don't count; board names come from the resource.
+            page.goto(base + "#/scores/g-org.togetherings.lit")
+            page.locator(".board-link").first.wait_for()
+            names = page.locator(".board-link .board-name").all_inner_texts()
+            assert names == ["Lesson 1: Left-hand home keys", "Lesson 2: Right-hand home keys"], names
+            assert "1st" not in page.locator(".board-link").nth(1).inner_text()
+            # Ben ranks first on lesson 1 (higher accuracy, even though Amina typed faster)
+            assert "Ben Learner" in page.locator(".panel.board tbody tr").nth(0).inner_text()
+            # The coach hides names; learners then see initials
+            page.goto(base + "?as=coach#/settings/g-org.togetherings.lit")
+            page.locator("#f-p-leaderboard").wait_for()
+            page.select_option("#f-p-leaderboard", index=1)
+            page.locator("button:has-text('Save settings')").click()
+            page.locator("#toast:not([hidden])").wait_for()
+            page.goto(base + "?as=amina#/scores/g-org.togetherings.lit")
+            page.locator(".panel.board tbody tr").first.wait_for()
+            top = page.locator(".panel.board tbody tr").nth(0).inner_text()
+            assert "B.L." in top and "Ben" not in top, top
 
             # Admin setup page
             page.goto(base + "?as=admin#/status")

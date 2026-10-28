@@ -21,7 +21,17 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from . import API_VERSION, __version__, registry, validators
 from .service import GameService, PlatformError, Player
 from .store_django import DjangoStore
-from .views_common import ASSET_TYPES, SDK_PATH, card, game_file_headers, icon as icon_for, results_csv, session
+from .views_common import (
+    ASSET_TYPES,
+    SDK_PATH,
+    card,
+    csv_response_headers,
+    game_file_headers,
+    icon as icon_for,
+    results_csv,
+    scoreboards_csv,
+    session,
+)
 
 ASSETS = os.path.join(os.path.dirname(__file__), "assets")
 TOKEN_SALT = "kolibri_games.play"
@@ -109,6 +119,8 @@ def _game(key, playable=True):
     game = registry.get(key)
     if game is None or game.manifest is None:
         raise PlatformError("That game isn't on this device.", "not_found", 404)
+    if playable and game.is_lesson:
+        raise PlatformError("This is a Lesson Game. Open it from Learn.", "lesson_game", 409)
     if playable and not game.playable:
         raise PlatformError(" ".join(game.problems) or "This game can't be played.", "unplayable", 409)
     return game
@@ -317,8 +329,28 @@ def results(request, player, key):
     data = service.coach_results(game, player.facility_id, _users_in_scope(player, scope, class_id))
     if request.GET.get("format") == "csv":
         response = HttpResponse(results_csv(data), content_type="text/csv; charset=utf-8")
-        safe = "".join(c if c.isalnum() else "-" for c in game.title.lower()).strip("-")
-        response["Content-Disposition"] = 'attachment; filename="%s-results.csv"' % (safe or "game")
+        for header, value in csv_response_headers(game, "results").items():
+            response[header] = value
+        return response
+    return JsonResponse(data)
+
+
+@require_GET
+@api
+def scoreboards(request, player, key):
+    game = _game(key, playable=False)
+    user_ids = None
+    class_id = request.GET.get("class")
+    if class_id and player.is_coach:
+        users = _users_in_scope(player, coach_class_scope(request.user, player), class_id)
+        user_ids = {u for u, _ in users}
+    data = service.scoreboards(game, player, user_ids=user_ids)
+    if request.GET.get("format") == "csv":
+        if not player.is_coach:
+            raise PlatformError("Only coaches and administrators can do this.", "forbidden", 403)
+        response = HttpResponse(scoreboards_csv(data), content_type="text/csv; charset=utf-8")
+        for header, value in csv_response_headers(game, "scores").items():
+            response[header] = value
         return response
     return JsonResponse(data)
 
