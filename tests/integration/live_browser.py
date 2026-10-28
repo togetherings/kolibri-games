@@ -8,6 +8,7 @@ Browser test against a running Kolibri (used in CI). Checks that:
     python -m tests.integration.live_browser http://127.0.0.1:8080/ USERNAME PASSWORD
 """
 import sys
+from urllib.parse import urlsplit
 
 from playwright.sync_api import sync_playwright
 
@@ -53,7 +54,8 @@ def sign_in_round_trip(page, base, username, password, check):
     page.locator("#password input").wait_for(timeout=30000)
     page.locator("#password input").fill(password)
     page.locator("#password input").press("Enter")
-    page.wait_for_url("**/kolibri_games/**", timeout=60000)
+    # The sign-in address also mentions kolibri_games (in "next"), so match the path only.
+    page.wait_for_url(lambda url: "/kolibri_games/" in urlsplit(url).path, timeout=60000)
     check("#/play/" + GAME in page.url, "came back to the game after signing in: %s" % page.url)
     page.locator("iframe.game-frame").wait_for(timeout=30000)
     frame = page.frame_locator("iframe.game-frame")
