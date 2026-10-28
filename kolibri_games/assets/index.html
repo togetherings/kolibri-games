@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{CSRF_TOKEN}}">
+  <meta name="kolibri-root" content="{{KOLIBRI_ROOT}}">
+  <title>Games</title>
+  <link rel="stylesheet" href="assets/app.css?v={{VERSION}}">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="#/">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="2" y="7" width="28" height="18" rx="9"/>
+        <path class="pad" d="M9 13.5h3v-3h2.5v3h3V16h-3v3H12v-3H9z"/>
+        <circle class="btn-a" cx="22" cy="13.5" r="1.9"/>
+        <circle class="btn-b" cx="25" cy="17.5" r="1.9"/>
+      </svg>
+      <span>Games</span>
+    </a>
+    <div class="bar-mid" id="bar-mid"></div>
+    <nav class="bar-end" id="bar-end"></nav>
+  </header>
+  <main id="view" tabindex="-1"></main>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script src="assets/app.js?v={{VERSION}}"></script>
+</body>
+</html>

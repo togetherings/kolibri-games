@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kolibri-games"
+dynamic = ["version"]
+description = "A Kolibri plugin for playing sandboxed games with sign-ins, server-checked scores, leaderboards and coach tools."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Togetherings" }]
+keywords = ["kolibri", "games", "education", "offline", "internet-in-a-box", "zim"]
+classifiers = [
+    "Framework :: Django",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Education",
+]
+# Kolibri itself is deliberately NOT listed, so pip never replaces the Kolibri
+# that's already installed (for example by Internet-in-a-Box).
+dependencies = ["libzim>=3.1"]
+
+[project.urls]
+Homepage = "https://github.com/togetherings/kolibri-games"
+Issues = "https://github.com/togetherings/kolibri-games/issues"
+
+[project.scripts]
+kolibri-games-pack = "kolibri_games.pack:main"
+kolibri-games-preview = "kolibri_games.devserver:main"
+
+# Lets Kolibri discover the plugin, so it appears in `kolibri plugin list`.
+[project.entry-points."kolibri.plugins"]
+kolibri_games = "kolibri_games"
+
+[tool.setuptools]
+packages = [
+    "kolibri_games",
+    "kolibri_games.validators",
+    "kolibri_games.migrations",
+    "kolibri_games.management",
+    "kolibri_games.management.commands",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "kolibri_games.__version__" }
+
+[tool.setuptools.package-data]
+kolibri_games = ["assets/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

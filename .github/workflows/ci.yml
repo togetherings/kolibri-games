@@ -1,0 +1,142 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest -e .
+      - run: python -m pytest -q
+      - name: Package the sample games
+        run: kolibri-games-pack games/* --out-dir dist/games && ls -l dist/games
+
+  browser:
+    name: Browser test (preview server)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e . playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m tests.e2e_browser --screenshots screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots
+
+  kolibri:
+    name: Real Kolibri (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11"]
+    env:
+      KOLIBRI_HOME: ${{ github.workspace }}/.kolibri-home
+      KOLIBRI_GAMES_PATH: ${{ github.workspace }}/games
+      KOLIBRI_RUN_MODE: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install Kolibri and the plugin
+        run: |
+          pip install kolibri
+          pip install -e .
+          python -c "import kolibri; print('Kolibri', kolibri.__version__)"
+      - name: Enable the plugin and migrate
+        run: |
+          kolibri plugin enable kolibri_games
+          kolibri plugin list | grep kolibri_games
+          kolibri manage migrate
+      - name: Migrations match the models
+        run: kolibri manage makemigrations kolibri_games --check --dry-run
+      - name: Provision a test device
+        run: >
+          kolibri manage provisiondevice --facility "Test School" --preset formal
+          --superusername admin --superuserpassword admin123 --language_id en --noinput
+      - name: Setup check
+        run: kolibri manage kolibri_games_check
+      - name: Package a game for the channel test
+        run: kolibri-games-pack games/number-hunt -o "$RUNNER_TEMP/number-hunt.zim"
+      - name: Integration test
+        env:
+          KOLIBRI_GAMES_TEST_ZIM: ${{ runner.temp }}/number-hunt.zim
+        run: kolibri manage shell -c "exec(open('tests/integration/smoke.py').read())"
+      - name: Start Kolibri and load the games page
+        run: |
+          kolibri start --port 8080
+          for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:8080/ && break; sleep 2; done
+          curl -fsSL http://127.0.0.1:8080/en/kolibri_games/ | grep -q "assets/app.js"
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/en/kolibri_games/api/games)
+          test "$code" = "401"
+          kolibri stop
+
+  installer:
+    name: Installer on an IIAB-like system
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the wheel
+        run: |
+          python3 -m pip install build
+          python3 -m build --wheel
+      - name: Install Kolibri the way IIAB runs it
+        run: |
+          sudo python3 -m pip install kolibri
+          sudo useradd --system --home-dir /library/kolibri --create-home kolibri
+          sudo mkdir -p /library/kolibri && sudo chown kolibri /library/kolibri
+          sudo -u kolibri env KOLIBRI_HOME=/library/kolibri kolibri manage migrate
+          sudo -u kolibri env KOLIBRI_HOME=/library/kolibri kolibri manage provisiondevice --facility "IIAB School" \
+            --preset formal --superusername admin --superuserpassword admin123 --language_id en --noinput
+          cat <<'EOF' | sudo tee /etc/systemd/system/kolibri.service
+          [Unit]
+          Description=Kolibri
+          [Service]
+          Type=forking
+          RemainAfterExit=yes
+          Environment=KOLIBRI_USER=kolibri
+          Environment=KOLIBRI_HOME=/library/kolibri
+          Environment=KOLIBRI_HTTP_PORT=8009
+          Environment=KOLIBRI_URL_PATH_PREFIX=/kolibri
+          User=kolibri
+          TimeoutStartSec=600
+          ExecStart=/usr/local/bin/kolibri start
+          ExecStop=/usr/local/bin/kolibri stop
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          sudo systemctl daemon-reload
+          sudo systemctl start kolibri
+      - name: Run install.sh with the new wheel
+        run: sudo ./install.sh --wheel dist/kolibri_games-*.whl
+      - name: Run install.sh again (update path)
+        run: sudo ./install.sh --wheel dist/kolibri_games-*.whl
+      - name: The games page answers behind the /kolibri prefix
+        run: |
+          for i in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:8009/kolibri/ && break; sleep 2; done
+          curl -fsSL http://127.0.0.1:8009/kolibri/en/kolibri_games/ | grep -q "assets/app.js"
+      - name: Kolibri log
+        if: failure()
+        run: sudo tail -n 100 /library/kolibri/logs/kolibri.txt || true

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Memory Match</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header class="top">
+      <h1>Memory Match</h1>
+      <div class="stats" aria-live="polite">
+        <span><b id="moves">0</b> moves</span>
+        <span><b id="found">0</b> of <b id="total">8</b> pairs</span>
+      </div>
+    </header>
+    <p class="note" id="rule"></p>
+    <div class="grid" id="grid" role="grid" aria-label="Cards"></div>
+    <p class="note warn" id="error" role="alert" hidden></p>
+
+    <section class="done" id="done" hidden>
+      <h2 id="done-title">All pairs found!</h2>
+      <p id="done-summary"></p>
+      <p class="note" id="done-standing"></p>
+      <div class="actions">
+        <button type="button" class="go" id="btn-again">Play again</button>
+        <button type="button" id="btn-exit">Back to games</button>
+      </div>
+    </section>
+  </main>
+  <script src="__kolibri_games__/sdk.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
