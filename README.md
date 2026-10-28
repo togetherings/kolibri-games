@@ -94,8 +94,18 @@ KOLIBRI_GAMES_PATH=$PWD/games kolibri start --foreground
 ```
 
 GitHub Actions runs the unit tests, the browser test, an integration test inside a real
-Kolibri, and the installer on an IIAB-like system for every pull request. Pushing a tag like
-`v0.1.0` builds and publishes a release.
+Kolibri, and the installer on an IIAB-like system for every pull request.
+
+### Making a release
+
+1. Update `__version__` in `kolibri_games/__init__.py` and add a section to `CHANGELOG.md`
+   (through a pull request).
+2. On GitHub, go to **Releases > Draft a new release**, type the tag (for example `v0.1.0`),
+   choose **Create new tag on publish** with target `main`, give it a title and click
+   **Publish release**.
+3. GitHub Actions then runs the tests and attaches the plugin, the offline bundle, the sample
+   game ZIMs and checksums to the release (a few minutes). If the release notes are empty, they're
+   filled in from the changelog.
 
 ## License
 

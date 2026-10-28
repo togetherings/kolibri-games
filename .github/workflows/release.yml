@@ -1,34 +1,51 @@
 name: Release
 
-# Push a tag like v0.1.0 to publish a release. The tag must match
-# kolibri_games/__init__.py's __version__.
+# Publish a release on GitHub (Releases > Draft a new release) with a tag like
+# v0.1.0, or push such a tag. This builds the plugin, the offline bundle and the
+# sample game ZIMs and attaches them to the release. The tag must match
+# __version__ in kolibri_games/__init__.py.
 on:
+  release:
+    types: [published]
   push:
     tags: ["v*"]
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.event.release.tag_name || github.ref_name }}
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Check the tag matches the version
         run: |
           VERSION="$(python -c 'import kolibri_games; print(kolibri_games.__version__)')"
-          test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME doesn't match version $VERSION"; exit 1; }
+          test "v$VERSION" = "$TAG" || { echo "::error::Tag $TAG doesn't match version $VERSION in kolibri_games/__init__.py"; exit 1; }
       - run: pip install build pytest -e .
-      - run: python -m pytest -q
-      - run: bash tools/build_release.sh
-      - name: Publish the GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - run: tools/ci_run.sh "Unit tests" python -m pytest -q
+      - run: tools/ci_run.sh "Build" bash tools/build_release.sh
+      - name: Attach the files to the release
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           notes="$(awk -v v="$VERSION" '$0 ~ "^## " v {f=1; next} /^## / && f {exit} f' CHANGELOG.md)"
-          gh release create "$GITHUB_REF_NAME" --title "Kolibri Games $VERSION" --notes "$notes" \
-            dist/*.whl dist/*.tar.gz dist/games/*.zim dist/SHA256SUMS install.sh
+          files=(dist/*.whl dist/*.tar.gz dist/games/*.zim dist/SHA256SUMS install.sh)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+            if [ -z "$(gh release view "$TAG" --json body --jq .body)" ]; then
+              gh release edit "$TAG" --notes "$notes"
+            fi
+          else
+            gh release create "$TAG" --title "Kolibri Games $VERSION" --notes "$notes" "${files[@]}"
+          fi
