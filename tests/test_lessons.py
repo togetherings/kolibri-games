@@ -127,6 +127,20 @@ def test_reused_boards_merge_best_result_and_add_up_plays():
     assert {r["title"] for r in board["resources"]} == {"Maps of Sierra Leone", "Maps of the world"}
 
 
+def test_speed_ranks_higher_first_and_time_ranks_lower_first():
+    lit = lessons.group_resources([resource("lit", "1" * 32, "Lesson 1")])[0]
+    store = MemoryStore()
+    save(store, AMINA, "1" * 32, {"en-01": {"done": 1, "acc": 95, "wpm": 12}})
+    save(store, BEN, "1" * 32, {"en-01": {"done": 1, "acc": 95, "wpm": 20}})
+    rows = GameService(store).scoreboards(lit, COACH)["boards"][0]["rows"]
+    assert [r["name"] for r in rows] == ["Ben Learner", "Amina Learner"]  # same accuracy, more wpm wins
+    store = MemoryStore()
+    save(store, AMINA, "4" * 32, {"us": [95, 90, 1]})
+    save(store, BEN, "4" * 32, {"us": [95, 60, 1]})
+    rows = GameService(store).scoreboards(singe_game(), COACH)["boards"][0]["rows"]
+    assert [r["name"] for r in rows] == ["Ben Learner", "Amina Learner"]  # same accuracy, less time wins
+
+
 def test_ties_share_a_rank_and_missing_values_rank_last():
     game = singe_game()
     store = MemoryStore()

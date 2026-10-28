@@ -612,7 +612,7 @@
     ]);
     var ranked = spec.rank_by.map(function (k) {
       var f = fields.filter(function (x) { return x.key === k; })[0];
-      return f.label.toLowerCase() + (f.order === "asc" ? " (lower is better)" : "");
+      return f.label.toLowerCase() + (f.order === "asc" ? " (lower is better)" : " (higher is better)");
     });
     return el("section", { class: "panel board" }, [
       el("h2", { text: board.name }),
