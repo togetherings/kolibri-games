@@ -124,9 +124,11 @@
         el("h2", { text: "Sign in to play" }),
         el("p", { text: "Games use your Kolibri account to save your results." }),
         // Kolibri's sign-in page sends people back to "next" once they've signed in.
+        // Kolibri adds "next" to its sign-in address without re-encoding it, so the
+        // "#" of the game address is encoded twice to survive that step.
         el("p", {}, [el("a", {
           class: "button primary",
-          href: KOLIBRI_ROOT + "?next=" + encodeURIComponent(location.pathname + location.hash),
+          href: KOLIBRI_ROOT + "?next=" + encodeURIComponent(location.pathname + location.hash.replace("#", "%23")),
           text: "Sign in"
         })])
       ])]);
