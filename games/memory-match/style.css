@@ -1,0 +1,51 @@
+:root {
+  --bg: #f6f2f8;
+  --card-back: #8a4f9e;
+  --card-face: #ffffff;
+  --ink: #241a29;
+  --muted: #6b5a73;
+  --line: #e2d6e8;
+  --match: #f0b400;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #151018; --card-back: #b07cc4; --card-face: #241c29; --ink: #efe6f3; --muted: #b3a2bb; --line: #3a2f40; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+[hidden] { display: none !important; }
+main { max-width: 40rem; margin: 0 auto; padding: 1.4rem 1rem 3rem; }
+.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .4rem 1rem; }
+h1 { font-size: 1.8rem; margin: 0; }
+.stats { display: flex; gap: 1.2rem; color: var(--muted); }
+.stats b { color: var(--ink); font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.note { color: var(--muted); margin: .4rem 0 1rem; }
+.note.warn { color: #c0392b; }
+
+.grid {
+  display: grid; grid-template-columns: repeat(var(--cols, 4), 1fr); gap: .6rem; margin: 0 auto;
+  /* Fit the whole board on screen: width limited by the height available. */
+  max-width: max(16rem, calc((100vh - 10rem) * var(--cols, 4) / var(--rows, 4)));
+}
+.card {
+  aspect-ratio: 1; border: 0; border-radius: 14px; padding: 0; cursor: pointer; position: relative;
+  background: var(--card-back); color: inherit; font: inherit;
+  background-image: radial-gradient(circle at 30% 30%, rgba(255,255,255,.25) 0 12%, transparent 13%),
+                    radial-gradient(circle at 70% 70%, rgba(255,255,255,.18) 0 9%, transparent 10%);
+}
+.card svg { width: 62%; height: 62%; display: none; }
+.card.up, .card.matched { background: var(--card-face); box-shadow: inset 0 0 0 2px var(--line); cursor: default; }
+.card.up svg, .card.matched svg { display: inline-block; }
+.card.matched { box-shadow: inset 0 0 0 3px var(--match); }
+.card:focus-visible { outline: 3px solid var(--match); outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .card { transition: background-color .15s ease; }
+  .card.matched svg { animation: pop .3s ease-out; }
+  @keyframes pop { from { transform: scale(.6); } to { transform: scale(1); } }
+}
+
+.done { margin-top: 1.4rem; background: var(--card-face); border-radius: 14px; padding: 1.1rem 1.2rem; box-shadow: inset 0 0 0 2px var(--match); }
+.done h2 { margin: 0 0 .3rem; }
+.actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .6rem; }
+button { font: inherit; border-radius: 10px; padding: .55rem 1.1rem; border: 2px solid var(--card-back); background: var(--card-face); color: var(--ink); cursor: pointer; }
+button.go { background: var(--card-back); color: #fff; font-weight: 700; }

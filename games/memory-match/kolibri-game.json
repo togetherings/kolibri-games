@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "id": "org.togetherings.memory-match",
+  "version": "0.1.0",
+  "title": "Memory Match",
+  "description": "Turn over two cards at a time and find every matching pair.",
+  "entry": "index.html",
+  "language": "en",
+  "requires_platform": ">=0.1",
+  "icon": "icon.svg",
+  "color": "#8a4f9e",
+  "scoring": {
+    "label": "Moves",
+    "unit": "moves",
+    "order": "asc",
+    "counts": "best",
+    "tiebreak": "seconds",
+    "min": 1,
+    "max": 1000
+  },
+  "settings": [
+    {
+      "key": "pairs",
+      "type": "choice",
+      "label": "Number of pairs",
+      "choices": [
+        {"value": 6, "label": "6 pairs (easy)"},
+        {"value": 8, "label": "8 pairs"},
+        {"value": 12, "label": "12 pairs (hard)"}
+      ],
+      "default": 8
+    }
+  ],
+  "authors": ["Togetherings"],
+  "license": "MIT"
+}

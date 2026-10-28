@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+.e2e-home/
+.kolibri-home/
+screenshots/
+*.zim

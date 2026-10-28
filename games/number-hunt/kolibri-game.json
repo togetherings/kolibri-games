@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "id": "org.togetherings.number-hunt",
+  "version": "0.1.0",
+  "title": "Number Hunt",
+  "description": "Find the secret number in as few guesses as you can.",
+  "entry": "index.html",
+  "language": "en",
+  "requires_platform": ">=0.1",
+  "validator": "number-hunt",
+  "icon": "icon.svg",
+  "color": "#2f6f8f",
+  "scoring": {
+    "label": "Guesses",
+    "unit": "guesses",
+    "order": "asc",
+    "counts": "first",
+    "tiebreak": "seconds",
+    "min": 1,
+    "max": 1000
+  },
+  "settings": [
+    {
+      "key": "max",
+      "type": "choice",
+      "label": "Numbers to search",
+      "choices": [
+        {"value": 20, "label": "1 to 20"},
+        {"value": 100, "label": "1 to 100"},
+        {"value": 1000, "label": "1 to 1000"}
+      ],
+      "default": 100
+    }
+  ],
+  "authors": ["Togetherings"],
+  "license": "MIT"
+}
