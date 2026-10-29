@@ -2,7 +2,7 @@
 
 Kolibri Games has two kinds of game:
 
-- **Free-play Games** are played on the games page. They're packed as `.zim` files (see
+- **Free-play Games** are installed into Kolibri Games and played on the games page (see
   [GAME_FORMAT.md](GAME_FORMAT.md)).
 - **Classroom Games** are ordinary Kolibri HTML5 apps (`.zip`) in a channel. Learners open them from
   Learn, and coaches can put them in lessons and assign them to classes, like any other resource.
@@ -111,10 +111,10 @@ Both files are in [examples/classroom-games](../examples/classroom-games).
 | `id` | The game's id, shared by every resource of the game. Never change it. |
 | `version` | Like `1.2.0`. When resources have different versions, the newest manifest is used for the title, description and scoreboard layout. Board names from every version are kept. |
 | `title`, `description`, `color`, `icon` | Shown on the games page. `icon` is a path inside the zip. |
-| `requires_platform` | Optional, like `">=0.1.1"`. |
+| `requires_platform` | Optional, like `">=0.2"`. |
 | `scoreboards` | How to read the saved data, below. |
 
-Classroom Games can't use `validator`, `scoring`, `settings` or `data`: those are for Standalone
+Classroom Games can't use `scoring`, `settings`, `data` or `service`: those are for Free-play
 Games.
 
 ### `scoreboards`

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0
+
+- **Wiki BLAZE** (Browsing Links A-to-Z Exploration): race from one Wikipedia article to another
+  by following links, using a Wikipedia `.zim` file on the device. The server checks every link
+  and keeps each learner's chain. Going back to an earlier article is free, and the score is the
+  number of links in the final chain. Coaches see every step; after a challenge closes, everyone
+  sees all routes and the shortest route. Comes with the SolarSpell Wikipedia for Schools list
+  (about 10,500 articles), and coaches can make their own article lists.
+- **Challenges:** coaches set a game up for a class with its own settings, open and close dates,
+  time limit and scoreboard. Learners see their classes' challenges on the game card.
+- **Installing Free-play Games:** device administrators install, update, roll back and remove
+  games on the Setup page. Games are zips (made with `kolibri-games-pack` or any zip tool).
+- The Wikipedia file for Wiki BLAZE is chosen on the Setup page.
+- Free-play Games are no longer ZIM files, and rule checkers are gone: games report their own
+  scores, and impossible scores are refused. The "unchecked" label is gone too.
+- Game SDK version 2: `KolibriGames.move()` replaces `event()`, and `call()` is removed.
+- libzim is only needed for Wiki BLAZE; the installer installs it and carries on without it if it
+  can't.
+- Number Hunt now picks its secret number in the browser.
+
 ## 0.1.1
 
 - **Classroom Games.** HTML5 apps in Kolibri channels can now be Classroom Games: learners open them

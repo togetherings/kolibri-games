@@ -146,7 +146,10 @@ jobs:
           for i in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:8009/kolibri/ && break; sleep 2; done
           curl -fsSL http://127.0.0.1:8009/kolibri/en/kolibri_games/ | grep -q "assets/app.js"
       - name: libzim was installed for Wiki BLAZE
-        run: sudo -u kolibri env KOLIBRI_HOME=/library/kolibri kolibri manage kolibri_games_check | tee /dev/stderr | grep -q "libzim: installed"
+        run: |
+          sudo -u kolibri env KOLIBRI_HOME=/library/kolibri kolibri manage kolibri_games_check > check.txt
+          cat check.txt
+          grep -q "libzim: installed" check.txt
       - name: Kolibri log
         if: failure()
         run: sudo tail -n 100 /library/kolibri/logs/kolibri.txt || true
