@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "type": "free-play",
+  "id": "org.togetherings.wiki-blaze",
+  "version": "0.1.0",
+  "title": "Wiki BLAZE",
+  "description": "Browsing Links A-to-Z Exploration: get from one Wikipedia article to another by following links, in as few links as you can.",
+  "entry": "index.html",
+  "language": "en",
+  "requires_platform": ">=0.2",
+  "icon": "icon.svg",
+  "color": "#c2410c",
+  "service": "wikipedia-race",
+  "data": [
+    {
+      "name": "wikipedia"
+    }
+  ],
+  "wikipedia": {
+    "default_list": "lists/wikipedia-for-schools.txt",
+    "default_list_name": "Wikipedia for Schools (about 10,500 articles)"
+  },
+  "scoring": {
+    "label": "Links",
+    "unit": "links",
+    "order": "asc",
+    "counts": "first",
+    "tiebreak": "seconds",
+    "min": 1,
+    "max": 500,
+    "free_play_scoreboard": false
+  },
+  "settings": [
+    {
+      "key": "list",
+      "type": "article_list",
+      "label": "Articles learners can visit",
+      "default": "default"
+    },
+    {
+      "key": "start",
+      "type": "article",
+      "label": "Start article",
+      "help": "Leave the start and goal blank for a random pair.",
+      "default": ""
+    },
+    {
+      "key": "goal",
+      "type": "article",
+      "label": "Goal article",
+      "default": ""
+    }
+  ],
+  "authors": [
+    "Togetherings"
+  ],
+  "license": "MIT"
+}

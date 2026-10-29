@@ -2,8 +2,8 @@
 # Build everything for a release into dist/:
 #   kolibri_games-<v>-py3-none-any.whl      the plugin
 #   kolibri_games-<v>.tar.gz                source
-#   games/*.zim                              the sample games, ready for Kolibri Studio
-#   kolibri-games-<v>-offline.tar.gz         plugin + libzim wheels for Raspberry Pi and PCs + install.sh
+#   games/*.zip                              the sample games and Wiki BLAZE, to install on the Setup page
+#   kolibri-games-<v>-offline.tar.gz         plugin + libzim wheels (for Wiki BLAZE) for Raspberry Pi and PCs + install.sh
 #   SHA256SUMS
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -17,7 +17,7 @@ kolibri-games-pack games/* --out-dir dist/games
 BUNDLE="dist/kolibri-games-$VERSION-offline"
 mkdir -p "$BUNDLE/wheels" "$BUNDLE/games"
 cp dist/kolibri_games-"$VERSION"-py3-none-any.whl "$BUNDLE/wheels/"
-cp dist/games/*.zim "$BUNDLE/games/"
+cp dist/games/*.zip "$BUNDLE/games/"
 cp install.sh "$BUNDLE/"
 for py in 3.8 3.9 3.10 3.11 3.12 3.13; do
   abi="cp${py/./}"
@@ -39,15 +39,16 @@ Kolibri Games $VERSION - offline installer
    It finds Kolibri, installs or updates the plugin from the wheels/ folder,
    updates the database, and restarts Kolibri.
 
-3. The games/ folder has sample games. Copy .zim files into Kolibri's games
-   folder (shown at the end of the install), or upload them to a channel in
-   Kolibri Studio.
+3. The games/ folder has the sample games and Wiki BLAZE. Install them on
+   the games page: open Games in Kolibri's menu, then Setup, and choose a
+   .zip file. (Or copy the .zip files into Kolibri's games folder, shown at
+   the end of the install.)
 
 https://github.com/togetherings/kolibri-games
 EOF
 tar -czf "dist/kolibri-games-$VERSION-offline.tar.gz" -C dist "kolibri-games-$VERSION-offline"
 rm -rf "$BUNDLE"
 
-(cd dist && sha256sum ./*.whl ./*.tar.gz games/*.zim > SHA256SUMS)
+(cd dist && sha256sum ./*.whl ./*.tar.gz games/*.zip > SHA256SUMS)
 echo "Release files:"
 ls -l dist dist/games

@@ -3,22 +3,28 @@
 A [Kolibri](https://learningequality.org/kolibri/) plugin that turns Kolibri into a home for
 offline learning games, built with [Internet-in-a-Box](https://internet-in-a-box.org/) in mind.
 
-- **Games are content, not code in the plugin.** Games come in Kolibri channels (or can be
-  copied onto a device), so adding a game never means changing the plugin.
-- **Two kinds of game.** *Free-play Games* are small ZIM files played on the games page.
-  *Classroom Games* are ordinary HTML5 apps that learners open from Learn and coaches assign in
-  lessons; the games page shows scoreboards from the scores they save.
-- **Learners sign in with Kolibri.** Results are saved to their account, with scoreboards per
-  facility or class.
-- **Scores can be trusted.** Games run in a locked-down sandbox, and a game can have a *rule
-  checker* on the server that keeps secrets and works out the score itself.
+- **Games are content, not code in the plugin.** Every game is a zip of web files, so adding a
+  game never means changing the plugin.
+- **Two kinds of game.** *Free-play Games* are installed on the games page's Setup page and played
+  there, anytime or in a class challenge. *Classroom Games* are ordinary HTML5 apps in Kolibri
+  channels that learners open from Learn and coaches assign in lessons; the games page shows
+  scoreboards from the scores they save.
+- **Challenges.** Coaches set a game up for a class, with its own settings, dates and scoreboard.
+- **Learners sign in with Kolibri.** Results are saved to their account.
 - **Coaches stay in control.** They can see every learner's attempts and moves, export results
   as CSV, choose whether the first or best attempt counts, hide or anonymise scoreboards, set
   time limits, change each game's options, and give a learner a fresh start.
+- **Light enough for a Raspberry Pi**, and works fully offline.
 
-It comes with two sample Free-play Games: **Number Hunt** (scores checked by the server) and
-**Memory Match** (scores reported by the game). Example Classroom Game manifests for Lessons In
-Typing and Studies In Geography are in [examples/classroom-games](examples/classroom-games).
+Games attached to each release:
+
+- **Wiki BLAZE** (Browsing Links A-to-Z Exploration): race from one Wikipedia article to another
+  by following links, using the Wikipedia file already on the device. See
+  [docs/WIKI_BLAZE.md](docs/WIKI_BLAZE.md).
+- **Number Hunt** and **Memory Match**, two small sample games.
+
+Example Classroom Game manifests for Lessons In Typing and Studies In Geography are in
+[examples/classroom-games](examples/classroom-games).
 
 ## Install
 
@@ -42,7 +48,7 @@ sudo ./install.sh
 
 The installer finds Kolibri and the user it runs as, installs the plugin into Kolibri's Python,
 updates the database and restarts Kolibri. On an update it backs up Kolibri's database first.
-Run the same command again to update; add `--version 0.1.0` to install a particular release, or
+Run the same command again to update; add `--version 0.2.0` to install a particular release, or
 `--uninstall` to remove the plugin.
 
 Then open **Games** in Kolibri's side menu, or go to **`http://<your server>/kolibri/en/kolibri_games/`**
@@ -51,14 +57,16 @@ account, and come straight back to the games page afterwards.
 
 ### Adding games
 
-- **From a channel:** import a Kolibri channel that contains game ZIMs or Classroom Games. Every
-  game in an imported channel appears on the games page automatically.
-- **From a file:** copy a game's `.zim` file into `<KOLIBRI_HOME>/kolibri_games/games/`
-  (on IIAB: `/library/kolibri/kolibri_games/games/`).
+- **Free-play Games:** on the games page, open **Setup**, choose the game's `.zip` file and click
+  **Install**. Installing a newer version keeps the old one, so you can go back. (Copying the
+  zip into `<KOLIBRI_HOME>/kolibri_games/games/` works too; on IIAB that's
+  `/library/kolibri/kolibri_games/games/`.) Only device administrators can install games.
+- **Classroom Games:** import a Kolibri channel that contains them. They appear on the games page
+  automatically.
+- **Wiki BLAZE** also needs a Wikipedia `.zim` file: choose it on the Setup page.
 
-The sample games are attached to each [release](https://github.com/togetherings/kolibri-games/releases)
-as `.zim` files. Administrators can see where games are loaded from, and why a game can't be
-played, under **Setup** on the games page or with:
+The games are attached to each [release](https://github.com/togetherings/kolibri-games/releases)
+as `.zip` files. Administrators can see why a game can't be played on the Setup page, or with:
 
 ```bash
 sudo -u kolibri KOLIBRI_HOME=/library/kolibri kolibri manage kolibri_games_check
@@ -66,7 +74,7 @@ sudo -u kolibri KOLIBRI_HOME=/library/kolibri kolibri manage kolibri_games_check
 
 ## Making games
 
-A Free-play Game is a folder with a `kolibri-game.json` manifest and ordinary web files (HTML,
+A Free-play Game is a zip with a `kolibri-game.json` manifest and ordinary web files (HTML,
 JavaScript, CSS, images), using a small JavaScript SDK to start attempts, report moves and finish
 with a score. See **[docs/GAME_FORMAT.md](docs/GAME_FORMAT.md)**.
 
@@ -74,24 +82,24 @@ A Classroom Game is any Kolibri HTML5 app that saves its scores in SCORM `cmi.su
 `kolibri-game.json` that says how to read them. See **[docs/CLASSROOM_GAMES.md](docs/CLASSROOM_GAMES.md)**.
 
 ```bash
-pip install kolibri-games        # or: pip install -e . in this repository
-kolibri-games-preview games/     # try games in a browser without Kolibri
+pip install -e ".[wikipedia]"    # in this repository
+kolibri-games-preview games/ --wikipedia examples/tiny-wiki     # try games without Kolibri
 kolibri-games-preview games/ --classroom examples/classroom-games/preview.json  # with Classroom Games
-kolibri-games-pack games/my-game # package as dist/<id>_<version>.zim
+kolibri-games-pack games/my-game # package as dist/<id>-<version>.zip
 ```
 
 ## How it works
 
-See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the design, including the sandbox, the
-rule checkers, how results are stored, and what's planned next.
+See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the design, including the sandbox, how
+results are stored, how Wiki BLAZE reads Wikipedia, and what's planned next.
 
 ## Development
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install -e . pytest
+pip install -e ".[wikipedia]" pytest
 python -m pytest                 # unit tests (no Kolibri needed)
-python -m tests.e2e_browser      # plays both games in Chromium (needs playwright)
+python -m tests.e2e_browser      # plays the games in Chromium (needs playwright)
 ```
 
 With Kolibri installed in the same environment:
@@ -99,7 +107,7 @@ With Kolibri installed in the same environment:
 ```bash
 kolibri plugin enable kolibri_games
 kolibri manage migrate
-KOLIBRI_GAMES_PATH=$PWD/games kolibri start --foreground
+KOLIBRI_GAMES_PATH=$PWD/games KOLIBRI_GAMES_DATA_WIKIPEDIA=$PWD/examples/tiny-wiki kolibri start --foreground
 ```
 
 GitHub Actions runs the unit tests, the browser test, an integration test inside a real
@@ -109,12 +117,12 @@ Kolibri, and the installer on an IIAB-like system for every pull request.
 
 1. Update `__version__` in `kolibri_games/__init__.py` and add a section to `CHANGELOG.md`
    (through a pull request).
-2. On GitHub, go to **Releases > Draft a new release**, type the tag (for example `v0.1.0`),
+2. On GitHub, go to **Releases > Draft a new release**, type the tag (for example `v0.2.0`),
    choose **Create new tag on publish** with target `main`, give it a title and click
    **Publish release**.
-3. GitHub Actions then runs the tests and attaches the plugin, the offline bundle, the sample
-   game ZIMs and checksums to the release (a few minutes). If the release notes are empty, they're
-   filled in from the changelog.
+3. GitHub Actions then runs the tests and attaches the plugin, the offline bundle, the game zips
+   and checksums to the release (a few minutes). If the release notes are empty, they're filled in
+   from the changelog.
 
 ## License
 

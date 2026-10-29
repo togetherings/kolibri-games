@@ -2,7 +2,7 @@
 Which attempt counts, and how results are ranked. Works on any objects with
 these attributes (Django models or plain objects):
 
-    user_id, user_name, number, voided, status, score, seconds, verified, finished_at
+    id, user_id, user_name, number, voided, status, score, seconds, finished_at
 
 ``status`` is one of: started, finished, abandoned, expired.
 """
@@ -84,7 +84,11 @@ def initials(name):
 
 
 def scoreboard_rows(attempts, scoring, counts, me_id=None, visibility="names", limit=20):
-    """Rows for display. With visibility 'hidden' only the viewer's own row is returned."""
+    """Rows for display. With visibility 'hidden' only the viewer's own row is returned.
+
+    Each row has the counted attempt's id as ``attempt_id`` (the caller removes
+    it or uses it to add details such as a Wiki BLAZE route).
+    """
     rows = []
     for rank, a in ranked(attempts, scoring, counts):
         me = a.user_id == me_id
@@ -99,8 +103,8 @@ def scoreboard_rows(attempts, scoring, counts, me_id=None, visibility="names", l
                 "name": name,
                 "score": num(a.score),
                 "seconds": round(a.seconds or 0, 1),
-                "verified": bool(a.verified),
                 "me": me,
+                "attempt_id": a.id,
             }
         )
     top = rows[:limit]

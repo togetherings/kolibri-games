@@ -200,6 +200,16 @@ trap rollback ERR
 "$PY" -m pip install --upgrade "${PIP_FLAGS[@]}" "${SPEC[@]}"
 NEW="$("$PY" -m pip show "$PACKAGE" | sed -n 's/^Version: //p')"
 
+# libzim lets Wiki BLAZE read Wikipedia .zim files. The other games work
+# without it, so a failure here only gives a warning.
+if [ -n "$BUNDLE" ]; then
+  LIBZIM_SPEC=(--no-index --find-links "$BUNDLE/wheels" "libzim>=3.1")
+else
+  LIBZIM_SPEC=("libzim>=3.1")
+fi
+"$PY" -m pip install "${PIP_FLAGS[@]}" "${LIBZIM_SPEC[@]}" >/dev/null 2>&1 \
+  || warn "Couldn't install libzim, which Wiki BLAZE needs to read Wikipedia. The other games work without it."
+
 say "Enabling the plugin and updating the database"
 run_kolibri plugin enable "$PLUGIN"
 run_kolibri manage migrate --noinput
@@ -213,5 +223,7 @@ trap - ERR
 
 restart_kolibri
 say "Kolibri Games $NEW is installed."
-echo "Add games by importing a channel that contains them, or copy game .zim files into:"
-echo "  $KHOME/kolibri_games/games"
+echo "Install Free-play Games on the games page: open Games in Kolibri's menu, then Setup."
+echo "(Game .zip files are attached to each release. You can also copy them into"
+echo "  $KHOME/kolibri_games/games )"
+echo "Classroom Games come in Kolibri channels, like any other resource."

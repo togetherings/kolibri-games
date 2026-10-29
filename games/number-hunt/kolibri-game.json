@@ -1,13 +1,13 @@
 {
   "format": 1,
+  "type": "free-play",
   "id": "org.togetherings.number-hunt",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "title": "Number Hunt",
   "description": "Find the secret number in as few guesses as you can.",
   "entry": "index.html",
   "language": "en",
-  "requires_platform": ">=0.1.1",
-  "validator": "number-hunt",
+  "requires_platform": ">=0.2",
   "icon": "icon.svg",
   "color": "#2f6f8f",
   "scoring": {
@@ -25,13 +25,24 @@
       "type": "choice",
       "label": "Numbers to search",
       "choices": [
-        {"value": 20, "label": "1 to 20"},
-        {"value": 100, "label": "1 to 100"},
-        {"value": 1000, "label": "1 to 1000"}
+        {
+          "value": 20,
+          "label": "1 to 20"
+        },
+        {
+          "value": 100,
+          "label": "1 to 100"
+        },
+        {
+          "value": 1000,
+          "label": "1 to 1000"
+        }
       ],
       "default": 100
     }
   ],
-  "authors": ["Togetherings"],
+  "authors": [
+    "Togetherings"
+  ],
   "license": "MIT"
 }
