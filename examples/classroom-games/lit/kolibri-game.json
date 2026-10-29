@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "type": "classroom",
+  "id": "org.togetherings.lit",
+  "version": "0.21.0",
+  "title": "Lessons In Typing",
+  "description": "Typing lessons. Each lesson teaches a few new keys.",
+  "color": "#2f6f5e",
+  "scoreboards": {
+    "saved_in": "scorm",
+    "board_label": "Lesson",
+    "name_boards_after_resource": true,
+    "only_if": { "from": "done", "equals": 1 },
+    "fields": [
+      { "key": "acc", "from": "acc", "label": "Accuracy", "unit": "%", "order": "desc" },
+      { "key": "wpm", "from": "wpm", "label": "Speed", "unit": "wpm", "order": "desc" }
+    ],
+    "rank_by": ["acc", "wpm"]
+  }
+}

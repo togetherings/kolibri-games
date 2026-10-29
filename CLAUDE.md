@@ -1,7 +1,7 @@
 # Notes for working on this repository
 
 - Python package: `kolibri_games/`. Kolibri plugin name: `kolibri_games`.
-- Keep `service.py`, `ranking.py`, `manifest.py`, `registry.py`, `sources.py`, `views_common.py`,
+- Keep `service.py`, `ranking.py`, `lessons.py`, `manifest.py`, `registry.py`, `sources.py`, `views_common.py`,
   `validators/` free of Django imports; Django code lives in `models.py`, `store_django.py`,
   `views.py`, `urls.py`, `management/`.
 - `devserver.py` mirrors the API in `views.py` with the memory store. Change both together.

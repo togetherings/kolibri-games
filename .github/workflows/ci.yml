@@ -91,7 +91,15 @@ jobs:
           curl -fsSL http://127.0.0.1:8080/en/kolibri_games/ | grep -q "assets/app.js"
           code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/en/kolibri_games/api/games)
           test "$code" = "401"
-          kolibri stop
+      - name: Install a browser
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Sign-in return and Kolibri menu link (real browser)
+        run: tools/ci_run.sh "Live browser test" python -m tests.integration.live_browser http://127.0.0.1:8080/ admin admin123
+      - name: Stop Kolibri
+        if: always()
+        run: kolibri stop || true
 
   installer:
     name: Installer on an IIAB-like system

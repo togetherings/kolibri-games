@@ -36,7 +36,7 @@ def first_attempt(attempts):
 
 
 def counted_attempt(attempts, scoring, counts):
-    """The attempt that represents this player on the leaderboard, or None."""
+    """The attempt that represents this player on the scoreboard, or None."""
     if counts == "first":
         first = first_attempt(attempts)
         return first if first is not None and _is_ranked(first) else None
@@ -83,7 +83,7 @@ def initials(name):
     return "".join(p[0].upper() + "." for p in parts[:3])
 
 
-def leaderboard_rows(attempts, scoring, counts, me_id=None, visibility="names", limit=20):
+def scoreboard_rows(attempts, scoring, counts, me_id=None, visibility="names", limit=20):
     """Rows for display. With visibility 'hidden' only the viewer's own row is returned."""
     rows = []
     for rank, a in ranked(attempts, scoring, counts):

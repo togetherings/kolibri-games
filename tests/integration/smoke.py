@@ -120,8 +120,8 @@ other = Client()
 other.force_login(ben)
 status, _ = jpost(other, base + "api/games/%s/attempts/%d/events" % (NH, aid), {"type": "guess", "data": {"value": 3}})
 check(status in (404, 409), "another learner can't touch this attempt")
-status, board = jget(other, base + "api/games/%s/leaderboard" % NH)
-check(status == 200 and board["rows"][0]["name"] == "Amina Test", "leaderboard shows the result")
+status, board = jget(other, base + "api/games/%s/scoreboard" % NH)
+check(status == 200 and board["rows"][0]["name"] == "Amina Test", "scoreboard shows the result")
 
 status, mm = jpost(other, base + "api/games/%s/attempts" % MM, {"resume": False})
 status, fin = jpost(other, base + "api/games/%s/attempts/%d/finish" % (MM, mm["attempt"]["id"]), {"score": 9, "detail": {"pairs": 8}})
@@ -146,11 +146,11 @@ names = [row["name"] for row in res["rows"]]
 check(status == 200 and "Amina Test" in names and "Ben Test" in names, "class results include every member: %s" % names)
 r = c.get(base + "api/games/%s/results?format=csv" % NH)
 check(r.status_code == 200 and b"Amina Test" in r.content, "CSV export works")
-status, s = jpost(c, base + "api/games/%s/settings" % NH, {"platform": {"leaderboard": "initials"}, "game": {"max": 20}})
+status, s = jpost(c, base + "api/games/%s/settings" % NH, {"platform": {"scoreboard": "initials"}, "game": {"max": 20}})
 check(status == 200 and s["values"]["game"]["max"] == 20, "coach saved settings")
 status, bad = jpost(c, base + "api/games/%s/settings" % NH, {"platform": {"time_limit": -1}, "game": {}})
 check(status == 400 and "time_limit" in bad.get("fields", {}), "invalid settings rejected with field errors")
-status, board = jget(other, base + "api/games/%s/leaderboard" % NH)
+status, board = jget(other, base + "api/games/%s/scoreboard" % NH)
 check(board["rows"][0]["name"] == "A.T.", "learners now see initials")
 status, _ = jpost(c, base + "api/games/%s/results/%s/reset" % (NH, amina.id))
 status, again = jpost(learner, base + "api/games/%s/attempts" % NH)
@@ -184,6 +184,76 @@ if zim:
         check(False, "channel discovery test crashed: %r" % e)
 else:
     print("skip channel discovery test (KOLIBRI_GAMES_TEST_ZIM not set)")
+
+# ------------------------------------------------------------ Classroom Games
+
+try:
+    import zipfile
+
+    from django.utils import timezone
+    from kolibri.core.content.models import ContentNode, File, LocalFile
+    from kolibri.core.content.utils.paths import get_content_storage_file_path
+    from kolibri.core.logger.models import ContentSummaryLog
+
+    LIT = os.path.join(os.getcwd(), "examples", "classroom-games", "lit")  # run from the repository folder
+
+    def html5_resource(title, with_manifest=True):
+        checksum = uuid.uuid4().hex
+        target = get_content_storage_file_path("%s.zip" % checksum)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with zipfile.ZipFile(target, "w") as z:
+            z.writestr("index.html", "<p>%s</p>" % title)
+            if with_manifest:
+                z.write(os.path.join(LIT, "kolibri-game.json"), "kolibri-game.json")
+        local = LocalFile.objects.create(id=checksum, extension="zip", available=True, file_size=os.path.getsize(target))
+        channel_id = uuid.uuid4().hex
+        node = ContentNode.objects.create(
+            id=channel_id, content_id=uuid.uuid4().hex, channel_id=channel_id, title=title, kind="html5", available=True,
+        )
+        File.objects.create(id=uuid.uuid4().hex, local_file=local, contentnode=node, preset="html5_zip")
+        return node
+
+    def played(user, node, suspend_data):
+        now = timezone.now()
+        ContentSummaryLog.objects.create(
+            user=user, content_id=node.content_id, channel_id=node.channel_id, kind="html5",
+            start_timestamp=now, end_timestamp=now, progress=1, time_spent=60,
+            extra_fields={"contentState": {"SCORM": {"cmi": {"suspend_data": json.dumps(suspend_data),
+                                                              "core": {"lesson_status": "passed"}}}}},
+        )
+
+    lesson1 = html5_resource("Lesson 1: Left-hand home keys")
+    lesson1_copy = html5_resource("Lesson 1 again")
+    plain = html5_resource("An ordinary HTML5 app", with_manifest=False)
+    played(amina, lesson1, {"en-01": {"done": 1, "acc": 96, "wpm": 14}})
+    played(amina, lesson1_copy, {"en-01": {"done": 1, "acc": 99, "wpm": 9}})
+    played(ben, lesson1, {"en-01": {"done": 1, "acc": 97, "wpm": 20}})
+    LIT_KEY = "g-org.togetherings.lit"
+    games = {g.key: g for g in registry.discover(refresh=True)}
+    check(LIT_KEY in games and len(games[LIT_KEY].resources) == 2, "HTML5 apps with a Classroom Game manifest form one game")
+    check("c-" + plain.content_id not in games, "ordinary HTML5 apps are left alone")
+    status, data = jget(learner, base + "api/games")
+    card = [g for g in data["games"] if g["key"] == LIT_KEY]
+    check(bool(card) and card[0]["summary"]["boards"] == 1, "Classroom Game card shows the learner's progress: %s" % card)
+    status, scores = jget(learner, base + "api/games/%s/scoreboards" % LIT_KEY)
+    board = scores["boards"][0] if status == 200 and scores["boards"] else {}
+    rows = [(r["rank"], r["name"], r["values"]) for r in board.get("rows", [])]
+    check(rows == [(1, "Amina Test", {"acc": 99, "wpm": 9}), (2, "Ben Test", {"acc": 97, "wpm": 20})],
+          "scoreboard read from Kolibri's saved data, best of both copies: %s" % rows)
+    check(board.get("name") in ("Lesson 1: Left-hand home keys", "Lesson 1 again"), "board named after its resource")
+    status, _ = jget(learner, base + "api/games/%s" % LIT_KEY)
+    check(status == 409, "Classroom Games can't be opened on the games page (%s)" % status)
+    status, s = jpost(c, base + "api/games/%s/settings" % LIT_KEY, {"platform": {"scoreboard": "initials"}})
+    check(status == 200, "coach changed the Classroom Game's scoreboard setting")
+    status, scores = jget(other, base + "api/games/%s/scoreboards" % LIT_KEY)
+    check([r["name"] for r in scores["boards"][0]["rows"]] == ["A.T.", "Ben Test"], "learners now see initials")
+    r = c.get(base + "api/games/%s/scoreboards?format=csv&class=%s" % (LIT_KEY, classroom.id))
+    check(r.status_code == 200 and b"Amina Test" in r.content, "coach downloads scoreboards as CSV")
+except Exception as e:  # noqa: BLE001
+    import traceback
+
+    traceback.print_exc()
+    check(False, "Classroom Games test crashed: %r" % e)
 
 print()
 if FAILURES:

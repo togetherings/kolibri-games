@@ -44,7 +44,9 @@ class Command(BaseCommand):
         for g in games:
             d = g.describe()
             out("  [%s] %s %s (%s, %s) key=%s" % ("ok" if d["playable"] else "!!", d["title"], d["version"] or "",
-                                                  d["origin"], d["kind"], d["key"]))
+                                                  d["origin"], "Classroom Game" if d.get("type") == "classroom" else d["kind"], d["key"]))
+            if d.get("type") == "classroom":
+                out("       %d resource(s) in channels" % len(d["content"]["resources"]))
             out("       %s" % d["location"])
             for problem in d["problems"]:
                 out("       - %s" % problem)

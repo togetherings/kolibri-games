@@ -1,4 +1,6 @@
 """The service's store, backed by Kolibri's database."""
+import json
+
 from .models import Attempt, GameSettings, PlayerState
 from .service import Store
 
@@ -51,3 +53,34 @@ class DjangoStore(Store):
         row, _ = PlayerState.objects.get_or_create(game_key=game_key, user_id=user_id)
         row.data = data
         row.save()
+
+    def classroom_saves(self, content_ids, facility_id, user_id=None):
+        """Kolibri keeps what an HTML5 app saves (SCORM, xAPI, localStorage) in
+        ContentSummaryLog.extra_fields["contentState"]. Those logs sync between
+        Kolibri servers, so scoreboards include learners who played elsewhere."""
+        if not content_ids:
+            return []
+        from kolibri.core.logger.models import ContentSummaryLog
+
+        qs = ContentSummaryLog.objects.filter(content_id__in=list(content_ids), user__facility_id=facility_id)
+        if user_id is not None:
+            qs = qs.filter(user_id=user_id)
+        saves = []
+        for log in qs.values("user_id", "user__full_name", "user__username", "content_id", "extra_fields"):
+            extra = log["extra_fields"] or {}
+            if isinstance(extra, str):
+                try:
+                    extra = json.loads(extra)
+                except ValueError:
+                    extra = {}
+            if not isinstance(extra, dict):
+                continue
+            saves.append(
+                {
+                    "user_id": str(log["user_id"]),
+                    "user_name": log["user__full_name"] or log["user__username"] or "?",
+                    "content_id": str(log["content_id"]),
+                    "content_state": extra.get("contentState"),
+                }
+            )
+        return saves

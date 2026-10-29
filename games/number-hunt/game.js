@@ -117,10 +117,10 @@
         a.score + (a.score === 1 ? " guess" : " guesses") + " in " + clock(a.seconds) + ".";
       var standing = res.standing;
       var note = a.practice ? "This was practice: your first attempt is the one that counts. " : "";
-      if (standing) note += "You're number " + standing.rank + " of " + standing.of + " on the leaderboard.";
+      if (standing) note += "You're number " + standing.rank + " of " + standing.of + " on the scoreboard.";
       $("done-standing").textContent = note;
       show("done");
-      return KG.leaderboard().then(drawBoard);
+      return KG.scoreboard().then(drawBoard);
     }).catch(function (err) {
       $("done-title").textContent = "Couldn't save your result";
       $("done-summary").textContent = err.message;
@@ -168,7 +168,7 @@
     var bits = [];
     if (counts === "first") bits.push(info.summary && info.summary.first_used
       ? "You've already played your counted attempt, so this one is practice."
-      : "Your first attempt is the one that counts on the leaderboard.");
+      : "Your first attempt is the one that counts on the scoreboard.");
     if (limit) bits.push("You have " + Math.round(limit / 60) + " minutes.");
     bits.push("A perfect strategy needs at most " + Math.ceil(Math.log2(high + 1)) + " guesses.");
     $("intro-rule").textContent = bits.join(" ");

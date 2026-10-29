@@ -3,18 +3,22 @@
 A [Kolibri](https://learningequality.org/kolibri/) plugin that turns Kolibri into a home for
 offline learning games, built with [Internet-in-a-Box](https://internet-in-a-box.org/) in mind.
 
-- **Games are content, not code in the plugin.** Each game is a small ZIM file, so it can be
-  shared through a Kolibri channel or copied onto a device.
-- **Learners sign in with Kolibri.** Results are saved to their account, with leaderboards per
+- **Games are content, not code in the plugin.** Games come in Kolibri channels (or can be
+  copied onto a device), so adding a game never means changing the plugin.
+- **Two kinds of game.** *Free-play Games* are small ZIM files played on the games page.
+  *Classroom Games* are ordinary HTML5 apps that learners open from Learn and coaches assign in
+  lessons; the games page shows scoreboards from the scores they save.
+- **Learners sign in with Kolibri.** Results are saved to their account, with scoreboards per
   facility or class.
 - **Scores can be trusted.** Games run in a locked-down sandbox, and a game can have a *rule
   checker* on the server that keeps secrets and works out the score itself.
 - **Coaches stay in control.** They can see every learner's attempts and moves, export results
-  as CSV, choose whether the first or best attempt counts, hide or anonymise leaderboards, set
+  as CSV, choose whether the first or best attempt counts, hide or anonymise scoreboards, set
   time limits, change each game's options, and give a learner a fresh start.
 
-Version 0.1.0 comes with two sample games: **Number Hunt** (scores checked by the server) and
-**Memory Match** (scores reported by the game).
+It comes with two sample Free-play Games: **Number Hunt** (scores checked by the server) and
+**Memory Match** (scores reported by the game). Example Classroom Game manifests for Lessons In
+Typing and Studies In Geography are in [examples/classroom-games](examples/classroom-games).
 
 ## Install
 
@@ -41,13 +45,14 @@ updates the database and restarts Kolibri. On an update it backs up Kolibri's da
 Run the same command again to update; add `--version 0.1.0` to install a particular release, or
 `--uninstall` to remove the plugin.
 
-Then open **`http://<your server>/kolibri/en/kolibri_games/`** (on IIAB, usually
-`http://box.lan/kolibri/en/kolibri_games/`). Learners sign in with their Kolibri account.
+Then open **Games** in Kolibri's side menu, or go to **`http://<your server>/kolibri/en/kolibri_games/`**
+(on IIAB, usually `http://box.lan/kolibri/en/kolibri_games/`). Learners sign in with their Kolibri
+account, and come straight back to the games page afterwards.
 
 ### Adding games
 
-- **From a channel:** import a Kolibri channel that contains game ZIMs. Every game in an
-  imported channel appears on the games page automatically.
+- **From a channel:** import a Kolibri channel that contains game ZIMs or Classroom Games. Every
+  game in an imported channel appears on the games page automatically.
 - **From a file:** copy a game's `.zim` file into `<KOLIBRI_HOME>/kolibri_games/games/`
   (on IIAB: `/library/kolibri/kolibri_games/games/`).
 
@@ -61,13 +66,17 @@ sudo -u kolibri KOLIBRI_HOME=/library/kolibri kolibri manage kolibri_games_check
 
 ## Making games
 
-A game is a folder with a `kolibri-game.json` manifest and ordinary web files (HTML, JavaScript,
-CSS, images), using a small JavaScript SDK to start attempts, report moves and finish with a
-score. See **[docs/GAME_FORMAT.md](docs/GAME_FORMAT.md)**.
+A Free-play Game is a folder with a `kolibri-game.json` manifest and ordinary web files (HTML,
+JavaScript, CSS, images), using a small JavaScript SDK to start attempts, report moves and finish
+with a score. See **[docs/GAME_FORMAT.md](docs/GAME_FORMAT.md)**.
+
+A Classroom Game is any Kolibri HTML5 app that saves its scores in SCORM `cmi.suspend_data`, plus a
+`kolibri-game.json` that says how to read them. See **[docs/CLASSROOM_GAMES.md](docs/CLASSROOM_GAMES.md)**.
 
 ```bash
 pip install kolibri-games        # or: pip install -e . in this repository
 kolibri-games-preview games/     # try games in a browser without Kolibri
+kolibri-games-preview games/ --classroom examples/classroom-games/preview.json  # with Classroom Games
 kolibri-games-pack games/my-game # package as dist/<id>_<version>.zim
 ```
 

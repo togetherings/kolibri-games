@@ -46,7 +46,7 @@ packages = [
 version = { attr = "kolibri_games.__version__" }
 
 [tool.setuptools.package-data]
-kolibri_games = ["assets/*"]
+kolibri_games = ["assets/*", "static/kolibri_games.side_nav/*", "build/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

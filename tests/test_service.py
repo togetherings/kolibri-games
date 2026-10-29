@@ -93,7 +93,7 @@ def test_resume_and_abandon(setup):
     fresh = service.start(game, amina, resume=False)
     assert fresh["attempt"]["id"] != aid
     assert service.store.attempt_get(aid).status == "abandoned"
-    # The abandoned first attempt counts as unfinished: no leaderboard entry.
+    # The abandoned first attempt counts as unfinished: no scoreboard entry.
     s = secret_of(service, fresh["attempt"]["id"])
     service.event(game, amina, fresh["attempt"]["id"], "guess", {"value": s})
     result = service.finish(game, amina, fresh["attempt"]["id"], {})
@@ -148,14 +148,14 @@ def test_client_scored_game_is_unverified_and_bounded(setup):
     assert events[0]["type"] == "flip"
 
 
-def test_leaderboard_visibility_for_learners_and_coaches(setup):
+def test_scoreboard_visibility_for_learners_and_coaches(setup):
     service, clock, amina, ben, coach = setup
     game = folder_game("number-hunt")
     play_number_hunt(service, game, amina, clock, wrong_guesses=2)
     play_number_hunt(service, game, ben, clock, wrong_guesses=4)
-    service.save_settings(game, FAC, {"leaderboard": "hidden"}, {}, coach.id)
-    assert [r["name"] for r in service.leaderboard(game, ben)["rows"]] == ["Ben Learner"]
-    assert len(service.leaderboard(game, coach)["rows"]) == 2
+    service.save_settings(game, FAC, {"scoreboard": "hidden"}, {}, coach.id)
+    assert [r["name"] for r in service.scoreboard(game, ben)["rows"]] == ["Ben Learner"]
+    assert len(service.scoreboard(game, coach)["rows"]) == 2
 
 
 def test_state_size_limit(setup):

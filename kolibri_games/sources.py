@@ -1,10 +1,13 @@
 """
-Where a game's files come from: a ZIM file (how games are distributed, e.g.
-through a Kolibri channel) or a plain folder (handy while making a game).
+Where a game's files come from: a ZIM file (how Free-play Games are
+distributed, e.g. through a Kolibri channel), a zip file (a Kolibri HTML5 app,
+which is how Classroom Games are distributed) or a plain folder (handy while
+making a game).
 """
 import mimetypes
 import os
 import threading
+import zipfile
 
 from .manifest import MANIFEST_PATH, ManifestError, loads, safe_relpath
 
@@ -147,12 +150,49 @@ class ZimSource(GameSource):
             return False
 
 
+MAX_ZIP_MEMBER = 8 * 1024 * 1024
+
+
+class ZipSource(GameSource):
+    """A Kolibri HTML5 app (.zip). Only small files are read: the manifest and the icon."""
+
+    kind = "zip"
+
+    def __init__(self, location):
+        super(ZipSource, self).__init__(os.path.abspath(location))
+
+    def read(self, path):
+        rel = safe_relpath(path)
+        if rel is None:
+            return None
+        try:
+            with zipfile.ZipFile(self.location) as z:
+                try:
+                    info = z.getinfo(rel)
+                except KeyError:
+                    return None
+                if info.file_size > MAX_ZIP_MEMBER:
+                    return None
+                return z.read(info), guess_type(rel)
+        except (OSError, zipfile.BadZipFile, RuntimeError, NotImplementedError):
+            return None
+
+    def has_manifest(self):
+        try:
+            with zipfile.ZipFile(self.location) as z:
+                return MANIFEST_PATH in z.namelist()
+        except (OSError, zipfile.BadZipFile):
+            return False
+
+
 def open_source(location):
     if os.path.isdir(location):
         return FolderSource(location)
     if location.lower().endswith(".zim"):
         return ZimSource(location)
-    raise SourceError("%s is not a folder or a .zim file." % location)
+    if location.lower().endswith(".zip"):
+        return ZipSource(location)
+    raise SourceError("%s is not a folder, a .zim file or a .zip file." % location)
 
 
-__all__ = ["FolderSource", "ZimSource", "GameSource", "SourceError", "ManifestError", "open_source", "guess_type"]
+__all__ = ["FolderSource", "ZimSource", "ZipSource", "GameSource", "SourceError", "ManifestError", "open_source", "guess_type"]

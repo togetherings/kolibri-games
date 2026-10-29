@@ -50,10 +50,10 @@ def test_manifest_defaults():
     assert m.scoring["tiebreak"] == "seconds"
     assert m.entry == "index.html"
     keys = [f["key"] for f in m.platform_settings_schema()]
-    assert keys == ["counts", "leaderboard", "time_limit"]
+    assert keys == ["counts", "scoreboard", "time_limit"]
 
 
-def test_manifest_without_scoring_has_no_leaderboard_settings():
+def test_manifest_without_scoring_has_no_scoreboard_settings():
     data = dict(VALID)
     del data["scoring"]
     m = mf.validate(data)
@@ -153,13 +153,13 @@ def test_ties_and_order():
     assert desc[0][1].user_id == "d"
 
 
-def test_leaderboard_visibility():
+def test_scoreboard_visibility():
     attempts = [Attempt("amina", 1, score=3, name="Amina Learner"), Attempt("ben", 1, score=5, name="Ben Ochieng")]
-    rows = ranking.leaderboard_rows(attempts, ASC, "first", me_id="ben", visibility="initials")
+    rows = ranking.scoreboard_rows(attempts, ASC, "first", me_id="ben", visibility="initials")
     assert [r["name"] for r in rows] == ["A.L.", "Ben Ochieng"]
-    rows = ranking.leaderboard_rows(attempts, ASC, "first", me_id="ben", visibility="hidden")
+    rows = ranking.scoreboard_rows(attempts, ASC, "first", me_id="ben", visibility="hidden")
     assert [r["name"] for r in rows] == ["Ben Ochieng"]
-    rows = ranking.leaderboard_rows(attempts, ASC, "first", me_id="ben", limit=1)
+    rows = ranking.scoreboard_rows(attempts, ASC, "first", me_id="ben", limit=1)
     assert [r["name"] for r in rows] == ["Amina Learner", "Ben Ochieng"]  # own row always shown
 
 
