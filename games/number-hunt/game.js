@@ -1,10 +1,11 @@
-/* Number Hunt: the server picks the secret number and answers each guess,
- * so this page never knows the answer and the score can't be faked. */
+/* Number Hunt: the game picks a secret number and answers each guess.
+ * Every guess is sent to Kolibri Games with KolibriGames.move(), so coaches
+ * can see how each game went, and the score is the number of guesses. */
 (function () {
   "use strict";
   var KG = window.KolibriGames;
   var $ = function (id) { return document.getElementById(id); };
-  var S = { low: 1, high: 100, min: 1, max: 100, guesses: [], busy: false, over: false };
+  var S = { low: 1, high: 100, min: 1, max: 100, guesses: [], busy: false, over: false, secret: 0, top: 100 };
 
   function show(id) {
     ["intro", "play", "done"].forEach(function (s) { $(s).hidden = s !== id; });
@@ -54,32 +55,31 @@
     e.hidden = !text;
   }
 
-  function begin(resume) {
+  function begin() {
     error("intro", "");
     $("btn-start").disabled = true;
-    KG.start({ resume: resume }).then(function (res) {
-      var pub = res.public || {};
-      S.min = S.low = pub.low || 1;
-      S.max = S.high = pub.high || 100;
+    // Always a new attempt: the secret number lives only in this page.
+    KG.start({ resume: false }).then(function () {
+      S.min = S.low = 1;
+      S.max = S.high = S.top;
+      S.secret = 1 + Math.floor(Math.random() * S.top);
       S.guesses = [];
       S.over = false;
       $("history").innerHTML = "";
-      (pub.guesses || []).forEach(function (g) { addGuess(g.value, g.hint); });
       drawLine();
       show("play");
-      prompt(S.guesses.length ? "Welcome back. Keep going." : "Make your first guess.");
+      prompt("Make your first guess.");
       $("guess").min = S.min;
       $("guess").max = S.max;
       $("guess").value = "";
       $("guess").focus();
-      if (pub.found) finish();
     }).catch(function (e) {
       error("intro", e.message);
     }).then(function () { $("btn-start").disabled = false; });
   }
 
-  $("btn-start").addEventListener("click", function () { begin(true); });
-  $("btn-again").addEventListener("click", function () { show("intro"); begin(false); });
+  $("btn-start").addEventListener("click", function () { begin(); });
+  $("btn-again").addEventListener("click", function () { show("intro"); begin(); });
   $("btn-exit").addEventListener("click", function () { KG.exit(); });
 
   $("guess-form").addEventListener("submit", function (e) {
@@ -93,10 +93,11 @@
     error("play", "");
     S.busy = true;
     $("btn-guess").disabled = true;
-    KG.event("guess", { value: value }).then(function (reply) {
-      addGuess(value, reply.hint);
-      if (reply.hint === "correct") return finish();
-      prompt(value + " is too " + (reply.hint === "higher" ? "low" : "high") + ". My number is " + reply.hint + ".");
+    var hint = value === S.secret ? "correct" : value < S.secret ? "higher" : "lower";
+    KG.move("guess", { value: value, hint: hint }).then(function () {
+      addGuess(value, hint);
+      if (hint === "correct") return finish();
+      prompt(value + " is too " + (hint === "higher" ? "low" : "high") + ". My number is " + hint + ".");
       $("guess").value = "";
       $("guess").focus();
     }).catch(function (err) {
@@ -110,7 +111,7 @@
   function finish() {
     S.over = true;
     prompt("Found it!");
-    return KG.finish({}).then(function (res) {
+    return KG.finish({ score: S.guesses.length, detail: { secret: S.secret, guesses: S.guesses.length } }).then(function (res) {
       var a = res.attempt;
       $("done-title").textContent = "You found it!";
       $("done-summary").textContent = "The number was " + S.guesses[S.guesses.length - 1].value + ". You took " +
@@ -157,12 +158,8 @@
 
   KG.ready().then(function (info) {
     var high = (info.settings && info.settings.max) || 100;
+    S.top = high;
     $("intro-high").textContent = high;
-    if (info.preview) {
-      $("intro-rule").textContent = "Number Hunt needs Kolibri Games to play, because the secret number is kept on the server.";
-      $("btn-start").disabled = true;
-      return;
-    }
     var counts = info.rules && info.rules.counts;
     var limit = info.rules && info.rules.time_limit;
     var bits = [];

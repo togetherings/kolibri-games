@@ -1,26 +1,29 @@
 """
-Integration test inside a real Kolibri. Run with:
+Integration test inside a real Kolibri. Run from the repository folder with:
 
     kolibri manage shell -c "exec(open('tests/integration/smoke.py').read())"
 
-Expects the plugin enabled and migrated, the device provisioned, and
-KOLIBRI_GAMES_PATH pointing at the repository's games/ folder. Optionally
-KOLIBRI_GAMES_TEST_ZIM can point at a packed game ZIM to test channel discovery.
+Expects the plugin enabled and migrated, the device provisioned (with a super
+admin called "admin"), and KOLIBRI_GAMES_PATH pointing at the repository's
+games/ folder. KOLIBRI_GAMES_TEST_WIKI can point at a test Wikipedia ZIM
+(made with: python -m tests.make_test_zim tiny.zim) to test Wiki BLAZE.
 Creates test users in the current Kolibri database, so only use a throwaway one.
 """
+import io
 import json
 import os
-import shutil
 import sys
+import time
 import uuid
+import zipfile
 
 from django.test import Client
+from django.urls import get_resolver
 
 from kolibri.core.auth.models import Classroom, Facility, FacilityUser
 from kolibri_games import registry
 from kolibri_games.management.commands.kolibri_games_check import page_routes
-from kolibri_games.models import Attempt
-from django.urls import get_resolver
+from kolibri_games.models import Challenge
 
 FAILURES = []
 
@@ -60,17 +63,21 @@ def make_user(name):
     return user
 
 
-amina, ben, coach = make_user("amina"), make_user("ben"), make_user("coach")
+amina, ben, cara, coach = make_user("amina"), make_user("ben"), make_user("cara"), make_user("coach")
 facility.add_coach(coach)
 classroom = Classroom.objects.create(name="Class %s" % suffix, parent=facility)
 classroom.add_member(amina)
 classroom.add_member(ben)
+other_class = Classroom.objects.create(name="Other %s" % suffix, parent=facility)
+other_class.add_member(cara)
+admin = FacilityUser.objects.filter(username="admin").first()
 
 routes = page_routes(get_resolver().url_patterns)
 check(bool(routes), "games page route found: %s" % routes)
 base = "/" + routes[0]
-NH = "l-org.togetherings.number-hunt"
-MM = "l-org.togetherings.memory-match"
+NH = "f-org.togetherings.number-hunt"
+MM = "f-org.togetherings.memory-match"
+BLAZE = "f-org.togetherings.wiki-blaze"
 
 # ------------------------------------------------------------ anonymous
 
@@ -87,8 +94,8 @@ learner = Client()
 learner.force_login(amina)
 status, data = jget(learner, base + "api/games")
 keys = [g["key"] for g in (data or {}).get("games", [])]
-check(status == 200 and NH in keys and MM in keys, "learner sees both sample games: %s" % keys)
-check(data["me"]["role"] == "learner", "learner role detected")
+check(status == 200 and NH in keys and MM in keys, "learner sees the sample games: %s" % keys)
+check(data["me"]["role"] == "learner" and not data["me"]["can_install"], "learner role detected")
 
 status, session = jget(learner, base + "api/games/" + NH)
 check(status == 200 and session["play_url"].startswith("play/"), "game session has a play link")
@@ -102,34 +109,25 @@ check(learner.get(play + "../../kolibri-game.json").status_code in (403, 404), "
 check(Client().get(base + "play/bad-token/index.html").status_code == 403, "bad play token rejected")
 
 status, started = jpost(learner, base + "api/games/%s/attempts" % NH)
-check(status == 201 and "secret" not in json.dumps(started), "attempt started without leaking the secret")
 aid = started["attempt"]["id"]
-secret = Attempt.objects.get(id=aid).vstate["secret"]
-wrong = secret + 1 if secret < started["public"]["high"] else secret - 1
-status, reply = jpost(learner, base + "api/games/%s/attempts/%d/events" % (NH, aid), {"type": "guess", "data": {"value": wrong}})
-check(status == 200 and reply["hint"] in ("higher", "lower"), "wrong guess gets a hint")
-status, reply = jpost(learner, base + "api/games/%s/attempts/%d/events" % (NH, aid), {"type": "guess", "data": {"value": 0}})
-check(status == 400, "out-of-range guess rejected")
-status, reply = jpost(learner, base + "api/games/%s/attempts/%d/events" % (NH, aid), {"type": "guess", "data": {"value": secret}})
-check(status == 200 and reply["hint"] == "correct", "right guess found")
-status, result = jpost(learner, base + "api/games/%s/attempts/%d/finish" % (NH, aid), {"score": 1})
-check(status == 200 and result["attempt"]["score"] == 2 and result["attempt"]["verified"], "server scored 2 guesses, ignoring the claimed 1")
-check(result["standing"]["rank"] == 1, "learner ranked first")
+for value in (50, 25, 37):
+    status, _ = jpost(learner, base + "api/games/%s/attempts/%d/moves" % (NH, aid), {"type": "guess", "data": {"value": value}})
+check(status == 200, "moves are recorded")
+status, result = jpost(learner, base + "api/games/%s/attempts/%d/finish" % (NH, aid), {"score": 3})
+check(status == 200 and result["attempt"]["score"] == 3 and result["standing"]["rank"] == 1, "learner's score saved and ranked")
+status, bad = jpost(learner, base + "api/games/%s/attempts" % NH, {"resume": False})
+status, _ = jpost(learner, base + "api/games/%s/attempts/%d/finish" % (NH, bad["attempt"]["id"]), {"score": 99999})
+check(status == 400, "impossible scores are refused")
 
 other = Client()
 other.force_login(ben)
-status, _ = jpost(other, base + "api/games/%s/attempts/%d/events" % (NH, aid), {"type": "guess", "data": {"value": 3}})
+status, _ = jpost(other, base + "api/games/%s/attempts/%d/moves" % (NH, aid), {"type": "guess", "data": {"value": 3}})
 check(status in (404, 409), "another learner can't touch this attempt")
 status, board = jget(other, base + "api/games/%s/scoreboard" % NH)
 check(status == 200 and board["rows"][0]["name"] == "Amina Test", "scoreboard shows the result")
-
-status, mm = jpost(other, base + "api/games/%s/attempts" % MM, {"resume": False})
-status, fin = jpost(other, base + "api/games/%s/attempts/%d/finish" % (MM, mm["attempt"]["id"]), {"score": 9, "detail": {"pairs": 8}})
-check(status == 200 and fin["attempt"]["verified"] is False, "client-scored game saved as unchecked")
 status, _ = jpost(other, base + "api/games/%s/state" % MM, {"data": {"level": 2}})
 status, st = jget(other, base + "api/games/%s/state" % MM)
 check(st and st["data"] == {"level": 2}, "saved state round-trips")
-
 status, _ = jget(learner, base + "api/games/%s/results" % NH)
 check(status == 403, "learners can't see coach results")
 
@@ -144,7 +142,7 @@ check(status == 200 and any(x["id"] == classroom.id for x in classes["classes"])
 status, res = jget(c, base + "api/games/%s/results?class=%s" % (NH, classroom.id))
 names = [row["name"] for row in res["rows"]]
 check(status == 200 and "Amina Test" in names and "Ben Test" in names, "class results include every member: %s" % names)
-r = c.get(base + "api/games/%s/results?format=csv" % NH)
+r = c.get(base + "api/games/%s/results?format=csv&class=%s" % (NH, classroom.id))
 check(r.status_code == 200 and b"Amina Test" in r.content, "CSV export works")
 status, s = jpost(c, base + "api/games/%s/settings" % NH, {"platform": {"scoreboard": "initials"}, "game": {"max": 20}})
 check(status == 200 and s["values"]["game"]["max"] == 20, "coach saved settings")
@@ -152,38 +150,108 @@ status, bad = jpost(c, base + "api/games/%s/settings" % NH, {"platform": {"time_
 check(status == 400 and "time_limit" in bad.get("fields", {}), "invalid settings rejected with field errors")
 status, board = jget(other, base + "api/games/%s/scoreboard" % NH)
 check(board["rows"][0]["name"] == "A.T.", "learners now see initials")
-status, _ = jpost(c, base + "api/games/%s/results/%s/reset" % (NH, amina.id))
-status, again = jpost(learner, base + "api/games/%s/attempts" % NH)
-check(again["attempt"]["practice"] is False and again["public"]["high"] == 20, "reset gives a fresh counted attempt with new settings")
+status, _ = jpost(c, base + "api/games/%s/results/%s/reset" % (NH, amina.id), {})
+status, again = jpost(learner, base + "api/games/%s/attempts" % NH, {"resume": False})
+check(again["attempt"]["practice"] is False, "reset gives a fresh counted attempt")
 
-# ------------------------------------------------- channel ZIM discovery
+# ------------------------------------------------------------- challenges
 
-zim = os.environ.get("KOLIBRI_GAMES_TEST_ZIM")
-if zim:
-    try:
-        from kolibri.core.content.models import ContentNode, File, LocalFile
-        from kolibri.core.content.utils.paths import get_content_storage_file_path
+status, made = jpost(c, base + "api/games/%s/challenges" % MM, {
+    "title": "Pairs race", "class_id": classroom.id, "counts": "best", "settings": {"pairs": 6},
+})
+check(status == 201 and made["state"] == "open", "coach made a challenge: %s" % (made,))
+cid = made["id"]
+status, data = jget(learner, base + "api/games")
+card = [g for g in data["games"] if g["key"] == MM][0]
+check([x["title"] for x in card["challenges"]] == ["Pairs race"], "the class sees the challenge on the game card")
+cara_client = Client()
+cara_client.force_login(cara)
+status, data = jget(cara_client, base + "api/games")
+check([g for g in data["games"] if g["key"] == MM][0]["challenges"] == [], "another class doesn't see it")
+status, _ = jpost(cara_client, base + "api/games/%s/attempts" % MM, {"challenge": cid})
+check(status == 403, "another class can't play it")
+status, session = jget(learner, base + "api/games/%s?challenge=%d" % (MM, cid))
+check(session["settings"]["pairs"] == 6 and session["challenge"]["title"] == "Pairs race", "challenge settings reach the game")
+status, started = jpost(learner, base + "api/games/%s/attempts" % MM, {"challenge": cid})
+status, result = jpost(learner, base + "api/games/%s/attempts/%d/finish" % (MM, started["attempt"]["id"]), {"score": 7})
+status, board = jget(other, base + "api/games/%s/scoreboard?challenge=%d" % (MM, cid))
+check([r["score"] for r in board["rows"]] == [7], "the challenge has its own scoreboard")
+status, board = jget(other, base + "api/games/%s/scoreboard" % MM)
+check(board["rows"] == [], "free play's scoreboard is separate")
+status, res = jget(c, base + "api/games/%s/results?challenge=%d" % (MM, cid))
+check(status == 200 and len(res["rows"]) == 2, "challenge results list the class")
+status, _ = jpost(c, base + "api/games/%s/challenges/%d/delete" % (MM, cid))
+check(status == 200 and not Challenge.objects.filter(id=cid).exists(), "coach deleted the challenge")
 
-        checksum = uuid.uuid4().hex
-        target = get_content_storage_file_path("%s.zim" % checksum)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        shutil.copy(zim, target)
-        local = LocalFile.objects.create(id=checksum, extension="zim", available=True, file_size=os.path.getsize(zim))
-        channel_id = uuid.uuid4().hex
-        node = ContentNode.objects.create(
-            id=channel_id, content_id=uuid.uuid4().hex, channel_id=channel_id, title="Number Hunt (channel)",
-            kind="zim", available=True,
-        )
-        File.objects.create(id=uuid.uuid4().hex, local_file=local, contentnode=node, preset="zim")
-        games = registry.discover(refresh=True)
-        found = [g for g in games if g.key == "c-" + node.content_id]
-        check(bool(found) and found[0].playable, "game ZIM in a channel is discovered and playable")
-        status, data = jget(learner, base + "api/games")
-        check("c-" + node.content_id in [g["key"] for g in data["games"]], "channel game listed for learners")
-    except Exception as e:  # noqa: BLE001
-        check(False, "channel discovery test crashed: %r" % e)
+# ------------------------------------------------------- installing games
+
+if admin is not None:
+    a = Client()
+    a.force_login(admin)
+    status, data = jget(a, base + "api/games")
+    check(data["me"]["can_install"], "the device's super admin can install games")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for name in os.listdir("games/memory-match"):
+            content = open(os.path.join("games/memory-match", name), "rb").read()
+            if name == "kolibri-game.json":
+                m = json.loads(content)
+                m["id"], m["version"], m["title"] = "org.example.installed", "1.0.0", "Installed Match"
+                content = json.dumps(m).encode()
+            z.writestr(name, content)
+    r = a.post(base + "api/install", data=buf.getvalue(), content_type="application/zip")
+    check(r.status_code == 201, "a game zip installs: %s" % r.content[:200])
+    status, data = jget(learner, base + "api/games")
+    check("f-org.example.installed" in [g["key"] for g in data["games"]], "learners see the installed game")
+    r = c.post(base + "api/install", data=buf.getvalue(), content_type="application/zip")
+    check(r.status_code == 403, "coaches can't install games")
+    status, _ = jpost(a, base + "api/games/f-org.example.installed/remove")
+    check(status == 200 and registry.get("f-org.example.installed", refresh=True) is None, "the game is removed")
 else:
-    print("skip channel discovery test (KOLIBRI_GAMES_TEST_ZIM not set)")
+    check(False, "no super admin called 'admin' to test installing")
+
+# ------------------------------------------------------------ Wiki BLAZE
+
+wiki_zim = os.environ.get("KOLIBRI_GAMES_TEST_WIKI")
+if wiki_zim and admin is not None:
+    status, _ = jpost(a, base + "api/data-sources", {"name": "wikipedia", "path": wiki_zim})
+    check(status == 200, "administrator chose the Wikipedia file")
+    status, data = jget(learner, base + "api/games")
+    blaze = [g for g in data["games"] if g["key"] == BLAZE]
+    check(bool(blaze) and blaze[0]["playable"], "Wiki BLAZE is ready to play: %s" % blaze)
+    status, made = jpost(c, base + "api/games/%s/challenges" % BLAZE, {
+        "title": "Cat to Moon", "class_id": classroom.id, "settings": {"start": "cat", "goal": "Moon", "list": "all"},
+    })
+    check(status == 201 and made["start"] == "Cat" and made["goal"] == "Moon", "Wiki BLAZE challenge made: %s" % (made,))
+    for _ in range(40):  # the shortest route is worked out in a background thread
+        best = Challenge.objects.get(id=made["id"]).best
+        if best.get("status"):
+            break
+        time.sleep(0.5)
+    check(best.get("route") == ["Cat", "Mammal", "Whale", "Ocean", "Earth", "Moon"], "shortest route found: %s" % best)
+    status, started = jpost(learner, base + "api/games/%s/attempts" % BLAZE, {"challenge": made["id"]})
+    check(status == 201 and started["public"]["page"]["title"] == "Cat", "race starts on Cat")
+    aid = started["attempt"]["id"]
+    status, _ = jpost(learner, base + "api/games/%s/attempts/%d/moves" % (BLAZE, aid), {"type": "go", "data": {"to": "Moon"}})
+    check(status == 400, "a link that isn't on the page is refused")
+    for target in ("Mammal", "Animal"):
+        jpost(learner, base + "api/games/%s/attempts/%d/moves" % (BLAZE, aid), {"type": "go", "data": {"to": target}})
+    status, reply = jpost(learner, base + "api/games/%s/attempts/%d/moves" % (BLAZE, aid), {"type": "back", "data": {"step": 1}})
+    check(reply["steps"] == 1, "going back is free")
+    for target in ("Whale", "Ocean", "Earth", "Moon"):
+        status, reply = jpost(learner, base + "api/games/%s/attempts/%d/moves" % (BLAZE, aid), {"type": "go", "data": {"to": target}})
+    check(reply["done"], "goal reached")
+    status, result = jpost(learner, base + "api/games/%s/attempts/%d/finish" % (BLAZE, aid), {"score": 1})
+    check(status == 200 and result["attempt"]["score"] == 5, "the server counted 5 links, ignoring the claimed 1")
+    status, session = jget(learner, base + "api/games/" + BLAZE)
+    r = learner.get(base + session["play_url"] + "__wiki__/I/cat.png")
+    check(r.status_code == 200 and r["Content-Type"] == "image/png", "article pictures are served to the game")
+    check(learner.get(base + session["play_url"] + "__wiki__/Cat").status_code == 404, "articles aren't served directly")
+    status, saved = jpost(c, base + "api/article-lists", {"name": "Space", "titles": "Earth\nMoon\nSun\nMars"})
+    status, info = jget(c, base + "api/article-lists/%d?game=%s" % (saved["id"], BLAZE))
+    check(info.get("found") == 3 and info.get("missing") == ["Mars"], "article list checked against Wikipedia: %s" % info)
+else:
+    print("skip Wiki BLAZE test (KOLIBRI_GAMES_TEST_WIKI not set)")
 
 # ------------------------------------------------------------ Classroom Games
 
@@ -228,14 +296,14 @@ try:
     played(amina, lesson1, {"en-01": {"done": 1, "acc": 96, "wpm": 14}})
     played(amina, lesson1_copy, {"en-01": {"done": 1, "acc": 99, "wpm": 9}})
     played(ben, lesson1, {"en-01": {"done": 1, "acc": 97, "wpm": 20}})
-    LIT_KEY = "g-org.togetherings.lit"
+    LIT_KEY = "c-org.togetherings.lit"
     games = {g.key: g for g in registry.discover(refresh=True)}
     check(LIT_KEY in games and len(games[LIT_KEY].resources) == 2, "HTML5 apps with a Classroom Game manifest form one game")
     check("c-" + plain.content_id not in games, "ordinary HTML5 apps are left alone")
     status, data = jget(learner, base + "api/games")
     card = [g for g in data["games"] if g["key"] == LIT_KEY]
     check(bool(card) and card[0]["summary"]["boards"] == 1, "Classroom Game card shows the learner's progress: %s" % card)
-    status, scores = jget(learner, base + "api/games/%s/scoreboards" % LIT_KEY)
+    status, scores = jget(learner, base + "api/games/%s/boards" % LIT_KEY)
     board = scores["boards"][0] if status == 200 and scores["boards"] else {}
     rows = [(r["rank"], r["name"], r["values"]) for r in board.get("rows", [])]
     check(rows == [(1, "Amina Test", {"acc": 99, "wpm": 9}), (2, "Ben Test", {"acc": 97, "wpm": 20})],
@@ -245,9 +313,9 @@ try:
     check(status == 409, "Classroom Games can't be opened on the games page (%s)" % status)
     status, s = jpost(c, base + "api/games/%s/settings" % LIT_KEY, {"platform": {"scoreboard": "initials"}})
     check(status == 200, "coach changed the Classroom Game's scoreboard setting")
-    status, scores = jget(other, base + "api/games/%s/scoreboards" % LIT_KEY)
+    status, scores = jget(other, base + "api/games/%s/boards" % LIT_KEY)
     check([r["name"] for r in scores["boards"][0]["rows"]] == ["A.T.", "Ben Test"], "learners now see initials")
-    r = c.get(base + "api/games/%s/scoreboards?format=csv&class=%s" % (LIT_KEY, classroom.id))
+    r = c.get(base + "api/games/%s/boards?format=csv&class=%s" % (LIT_KEY, classroom.id))
     check(r.status_code == 200 and b"Amina Test" in r.content, "coach downloads scoreboards as CSV")
 except Exception as e:  # noqa: BLE001
     import traceback

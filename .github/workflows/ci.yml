@@ -22,9 +22,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install pytest -e .
+      - run: pip install pytest -e ".[wikipedia]"
       - run: tools/ci_run.sh "Unit tests" python -m pytest -q
-      - name: Package the sample games
+      - name: Package the games
         run: kolibri-games-pack games/* --out-dir dist/games && ls -l dist/games
 
   browser:
@@ -63,7 +63,7 @@ jobs:
       - name: Install Kolibri and the plugin
         run: |
           pip install kolibri
-          pip install -e .
+          pip install -e ".[wikipedia]"
           echo "::notice title=Kolibri version::$(python -c 'import kolibri; print(kolibri.__version__)')"
       - name: Enable the plugin and migrate
         run: |
@@ -78,11 +78,11 @@ jobs:
           --superusername admin --superuserpassword admin123 --language_id en --noinput
       - name: Setup check
         run: tools/ci_run.sh "Setup check" kolibri manage kolibri_games_check
-      - name: Package a game for the channel test
-        run: kolibri-games-pack games/number-hunt -o "$RUNNER_TEMP/number-hunt.zim"
+      - name: Make a small Wikipedia file for Wiki BLAZE
+        run: python -m tests.make_test_zim "$RUNNER_TEMP/tiny-wiki.zim"
       - name: Integration test
         env:
-          KOLIBRI_GAMES_TEST_ZIM: ${{ runner.temp }}/number-hunt.zim
+          KOLIBRI_GAMES_TEST_WIKI: ${{ runner.temp }}/tiny-wiki.zim
         run: tools/ci_run.sh "Integration test" kolibri manage shell -c "exec(open('tests/integration/smoke.py').read())"
       - name: Start Kolibri and load the games page
         run: |
@@ -145,6 +145,8 @@ jobs:
         run: |
           for i in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:8009/kolibri/ && break; sleep 2; done
           curl -fsSL http://127.0.0.1:8009/kolibri/en/kolibri_games/ | grep -q "assets/app.js"
+      - name: libzim was installed for Wiki BLAZE
+        run: sudo -u kolibri env KOLIBRI_HOME=/library/kolibri kolibri manage kolibri_games_check | tee /dev/stderr | grep -q "libzim: installed"
       - name: Kolibri log
         if: failure()
         run: sudo tail -n 100 /library/kolibri/logs/kolibri.txt || true

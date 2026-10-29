@@ -1,8 +1,12 @@
 """
-Where a game's files come from: a ZIM file (how Free-play Games are
-distributed, e.g. through a Kolibri channel), a zip file (a Kolibri HTML5 app,
-which is how Classroom Games are distributed) or a plain folder (handy while
-making a game).
+Where a game's files come from:
+
+* a zip file: how every game is shared (a Kolibri HTML5 app, or a Free-play
+  Game installed into this plugin)
+* a plain folder: handy while making a game (the preview server and
+  KOLIBRI_GAMES_PATH can point at folders)
+
+No Django imports.
 """
 import mimetypes
 import os
@@ -27,6 +31,11 @@ EXTRA_TYPES = {
     ".css": "text/css",
     ".html": "text/html",
 }
+
+#: Files bigger than this inside a game are not served (protects the server's memory).
+MAX_FILE_BYTES = 32 * 1024 * 1024
+#: The manifest must be small.
+MAX_MANIFEST_BYTES = 256 * 1024
 
 
 def guess_type(path):
@@ -58,14 +67,13 @@ class GameSource(object):
         found = self.read(MANIFEST_PATH)
         if found is None:
             raise SourceError("No %s found." % MANIFEST_PATH)
-        return loads(found[0].decode("utf-8"))
-
-    def stamp(self):
-        """Changes whenever the game's files change (used for caching)."""
+        if len(found[0]) > MAX_MANIFEST_BYTES:
+            raise SourceError("%s is too large." % MANIFEST_PATH)
         try:
-            return os.path.getmtime(self.location)
-        except OSError:
-            return 0
+            text = found[0].decode("utf-8-sig")
+        except UnicodeDecodeError:
+            raise SourceError("%s must be saved as UTF-8 text." % MANIFEST_PATH)
+        return loads(text)
 
 
 class FolderSource(GameSource):
@@ -80,82 +88,45 @@ class FolderSource(GameSource):
         if rel is None:
             return None
         full = os.path.realpath(os.path.join(self.location, rel))
+        # Refuse anything outside the folder, including through symbolic links.
         if not (full == self._real_root or full.startswith(self._real_root + os.sep)):
             return None
-        if not os.path.isfile(full):
+        if not os.path.isfile(full) or os.path.getsize(full) > MAX_FILE_BYTES:
             return None
         with open(full, "rb") as f:
             return f.read(), guess_type(full)
 
-    def stamp(self):
-        try:
-            return os.path.getmtime(os.path.join(self.location, MANIFEST_PATH))
-        except OSError:
-            return 0
+
+# Open zip files are kept so each request doesn't re-read the zip's table of
+# contents. Keyed by (path, modification time, size) so a replaced file is
+# opened again. A small limit keeps memory use low.
+_open_zips = {}
+_open_lock = threading.Lock()
+MAX_OPEN_ZIPS = 16
 
 
-_zim_cache = {}
-_zim_lock = threading.Lock()
-
-
-def _open_archive(path):
+def _zip(path):
     key = (path, os.path.getmtime(path), os.path.getsize(path))
-    with _zim_lock:
-        archive = _zim_cache.get(key)
-        if archive is None:
-            try:
-                from libzim.reader import Archive
-            except ImportError:
-                raise SourceError("The libzim Python package is not installed, so ZIM games can't be opened.")
-            try:
-                archive = Archive(path)
-            except Exception as e:
-                raise SourceError("Can't open ZIM file: %s" % e)
-            for old in [k for k in _zim_cache if k[0] == path]:
-                del _zim_cache[old]
-            _zim_cache[key] = archive
-        return archive
+    with _open_lock:
+        z = _open_zips.get(key)
+        if z is None:
+            z = zipfile.ZipFile(path)
+            for old in [k for k in _open_zips if k[0] == path]:
+                _open_zips.pop(old).close()
+            if len(_open_zips) >= MAX_OPEN_ZIPS:
+                _open_zips.pop(next(iter(_open_zips))).close()
+            _open_zips[key] = z
+        return z
 
 
-class ZimSource(GameSource):
-    kind = "zim"
-
-    def __init__(self, location):
-        super(ZimSource, self).__init__(os.path.abspath(location))
-
-    def read(self, path):
-        rel = safe_relpath(path)
-        if rel is None:
-            return None
-        archive = _open_archive(self.location)
-        try:
-            if not archive.has_entry_by_path(rel):
-                return None
-            entry = archive.get_entry_by_path(rel)
-            hops = 0
-            while entry.is_redirect:
-                hops += 1
-                if hops > 5:
-                    return None
-                entry = entry.get_redirect_entry()
-            item = entry.get_item()
-            return bytes(item.content), item.mimetype or guess_type(rel)
-        except Exception:
-            return None
-
-    def has_manifest(self):
-        try:
-            return _open_archive(self.location).has_entry_by_path(MANIFEST_PATH)
-        except SourceError:
-            return False
-
-
-MAX_ZIP_MEMBER = 8 * 1024 * 1024
+def forget_zip(path):
+    """Close a cached zip (before it's moved or deleted)."""
+    with _open_lock:
+        for old in [k for k in _open_zips if k[0] == path]:
+            _open_zips.pop(old).close()
 
 
 class ZipSource(GameSource):
-    """A Kolibri HTML5 app (.zip). Only small files are read: the manifest and the icon."""
-
     kind = "zip"
 
     def __init__(self, location):
@@ -166,33 +137,33 @@ class ZipSource(GameSource):
         if rel is None:
             return None
         try:
-            with zipfile.ZipFile(self.location) as z:
+            z = _zip(self.location)
+            with _open_lock:  # one reader at a time: a ZipFile shares one open file
                 try:
                     info = z.getinfo(rel)
                 except KeyError:
                     return None
-                if info.file_size > MAX_ZIP_MEMBER:
+                if info.is_dir() or info.file_size > MAX_FILE_BYTES:
                     return None
                 return z.read(info), guess_type(rel)
-        except (OSError, zipfile.BadZipFile, RuntimeError, NotImplementedError):
+        except (OSError, zipfile.BadZipFile, RuntimeError, NotImplementedError, ValueError):
             return None
 
     def has_manifest(self):
         try:
-            with zipfile.ZipFile(self.location) as z:
-                return MANIFEST_PATH in z.namelist()
-        except (OSError, zipfile.BadZipFile):
+            z = _zip(self.location)
+            with _open_lock:
+                return MANIFEST_PATH in z.NameToInfo
+        except (OSError, zipfile.BadZipFile, ValueError):
             return False
 
 
 def open_source(location):
     if os.path.isdir(location):
         return FolderSource(location)
-    if location.lower().endswith(".zim"):
-        return ZimSource(location)
     if location.lower().endswith(".zip"):
         return ZipSource(location)
-    raise SourceError("%s is not a folder, a .zim file or a .zip file." % location)
+    raise SourceError("%s is not a folder or a .zip file." % location)
 
 
-__all__ = ["FolderSource", "ZimSource", "ZipSource", "GameSource", "SourceError", "ManifestError", "open_source", "guess_type"]
+__all__ = ["FolderSource", "ZipSource", "GameSource", "SourceError", "ManifestError", "open_source", "guess_type", "forget_zip"]

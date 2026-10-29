@@ -2,7 +2,7 @@ name: Release
 
 # Publish a release on GitHub (Releases > Draft a new release) with a tag like
 # v0.1.0, or push such a tag. This builds the plugin, the offline bundle and the
-# sample game ZIMs and attaches them to the release. The tag must match
+# game zips (sample games and Wiki BLAZE) and attaches them to the release. The tag must match
 # __version__ in kolibri_games/__init__.py.
 on:
   release:
@@ -33,14 +33,14 @@ jobs:
         run: |
           VERSION="$(python -c 'import kolibri_games; print(kolibri_games.__version__)')"
           test "v$VERSION" = "$TAG" || { echo "::error::Tag $TAG doesn't match version $VERSION in kolibri_games/__init__.py"; exit 1; }
-      - run: pip install build pytest -e .
+      - run: pip install build pytest -e ".[wikipedia]"
       - run: tools/ci_run.sh "Unit tests" python -m pytest -q
       - run: tools/ci_run.sh "Build" bash tools/build_release.sh
       - name: Attach the files to the release
         run: |
           VERSION="${TAG#v}"
           notes="$(awk -v v="$VERSION" '$0 ~ "^## " v {f=1; next} /^## / && f {exit} f' CHANGELOG.md)"
-          files=(dist/*.whl dist/*.tar.gz dist/games/*.zim dist/SHA256SUMS install.sh)
+          files=(dist/*.whl dist/*.tar.gz dist/games/*.zip dist/SHA256SUMS install.sh)
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${files[@]}" --clobber
             if [ -z "$(gh release view "$TAG" --json body --jq .body)" ]; then

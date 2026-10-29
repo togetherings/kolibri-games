@@ -23,7 +23,7 @@ import re
 from . import ranking
 from .versions import VersionError, parse_version
 
-KEY_PREFIX = "g-"
+KEY_PREFIX = "c-"  # Classroom Game keys look like c-org.example.game
 MAX_SAVED_CHARS = 65536
 MAX_BOARD_ID = 100
 MAX_BOARDS_PER_SAVE = 500
@@ -190,6 +190,7 @@ class ClassroomGame(object):
         self.source = newest.source
         self.key = KEY_PREFIX + self.manifest.id
         self.problems = []
+        self.notes = []
         self.spec = merged_spec([r.manifest for r in resources], self.manifest)
 
     playable = True
@@ -217,6 +218,7 @@ class ClassroomGame(object):
             "id": self.manifest.id,
             "playable": True,
             "problems": self.problems,
+            "notes": self.notes,
             "content": {"resources": [r.public() for r in self.resources]},
         }
 

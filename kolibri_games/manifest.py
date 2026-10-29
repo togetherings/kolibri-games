@@ -1,8 +1,14 @@
 """
 The game manifest (``kolibri-game.json``): parsing, validation, and the
-settings schema that coaches fill in. No Django or Kolibri imports.
+settings that coaches fill in. No Django or Kolibri imports.
 
-See docs/GAME_FORMAT.md for the full description of every field.
+Every game is a zip file with a ``kolibri-game.json`` at its root. The
+``type`` field says which kind of game it is:
+
+* ``"free-play"`` (the default): installed into this plugin and played on the
+  games page. See docs/GAME_FORMAT.md.
+* ``"classroom"``: an HTML5 app in a Kolibri channel, played in Learn. The
+  games page shows scoreboards from its saved data. See docs/CLASSROOM_GAMES.md.
 """
 import json
 import posixpath
@@ -18,16 +24,24 @@ KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
-SETTING_TYPES = ("integer", "number", "boolean", "choice", "text")
-
-#: "free-play": played on the games page. "classroom": an HTML5 app in a Kolibri
-#: channel, opened from Learn; the games page shows scoreboards from its saved data.
 GAME_TYPES = ("free-play", "classroom")
+
+#: Server-side services built into this plugin that a Free-play Game can use.
+#: "wikipedia-race": the server reads Wikipedia articles for the game, checks
+#: every link the learner follows and works out the score (see wikirace.py).
+SERVICES = ("wikipedia-race",)
+
+#: Setting types. "article" (a Wikipedia article title) and "article_list" (a
+#: list of allowed articles) are only for games that use "wikipedia-race".
+SETTING_TYPES = ("integer", "number", "boolean", "choice", "text", "article", "article_list")
+WIKI_SETTING_TYPES = ("article", "article_list")
+
+# For Classroom Games' scoreboards.
 SAVED_IN = ("scorm",)
 COMBINE = ("best", "sum", "max")
 MAX_FIELDS = 8
 
-#: Settings every game has, managed by the platform rather than the game.
+#: Settings every Free-play Game has, managed by the platform rather than the game.
 PLATFORM_SETTINGS = [
     {
         "key": "counts",
@@ -87,6 +101,7 @@ class Manifest(object):
     def __init__(self, data):
         self.raw = data
         self.format = data["format"]
+        self.type = data.get("type", "free-play")
         self.id = data["id"]
         self.version = data["version"]
         self.title = data["title"]
@@ -94,15 +109,17 @@ class Manifest(object):
         self.entry = data.get("entry", "index.html")
         self.language = data.get("language", "en")
         self.requires_platform = data.get("requires_platform", "")
-        self.validator = data.get("validator")
-        self.scoring = data.get("scoring")
-        self.settings = data.get("settings", [])
-        self.data = data.get("data", [])
         self.icon = data.get("icon")
         self.color = data.get("color", "#3b6e8f")
         self.authors = data.get("authors", [])
         self.license = data.get("license", "")
-        self.type = data.get("type", "free-play")
+        # Free-play Games
+        self.scoring = data.get("scoring")
+        self.settings = data.get("settings", [])
+        self.data = data.get("data", [])
+        self.service = data.get("service")
+        self.wikipedia = data.get("wikipedia") or {}
+        # Classroom Games
         self.scoreboards = data.get("scoreboards")
 
     @property
@@ -113,11 +130,15 @@ class Manifest(object):
     def has_scores(self):
         return self.scoring is not None
 
+    @property
+    def free_play_scoreboard(self):
+        """False for games whose free-play rounds can't be compared (like random Wiki BLAZE pairs)."""
+        return self.has_scores and self.scoring.get("free_play_scoreboard", True)
+
     def platform_settings_schema(self):
         schema = [dict(s) for s in PLATFORM_SETTINGS]
         if self.is_classroom:
             board = dict([f for f in schema if f["key"] == "scoreboard"][0])
-            board["label"] = "What learners see on the scoreboards"
             return [board]
         for field in schema:
             if field["key"] == "counts":
@@ -130,6 +151,7 @@ class Manifest(object):
         """Fields safe to show in the UI."""
         return {
             "id": self.id,
+            "type": self.type,
             "version": self.version,
             "title": self.title,
             "description": self.description,
@@ -138,13 +160,12 @@ class Manifest(object):
             "color": self.color,
             "authors": self.authors,
             "license": self.license,
-            "validator": self.validator,
-            "type": self.type,
+            "service": self.service,
             "scoreboards": self.scoreboards,
         }
 
 
-def _check_setting(field, i, problems):
+def _check_setting(field, i, problems, service):
     where = "settings[%d]" % i
     if not isinstance(field, dict):
         problems.append("%s must be an object." % where)
@@ -156,6 +177,8 @@ def _check_setting(field, i, problems):
     if ftype not in SETTING_TYPES:
         problems.append("%s.type must be one of %s." % (where, ", ".join(SETTING_TYPES)))
         return
+    if ftype in WIKI_SETTING_TYPES and service != "wikipedia-race":
+        problems.append("%s: '%s' settings are only for games that use the wikipedia-race service." % (where, ftype))
     if not isinstance(field.get("label"), str) or not field["label"].strip():
         problems.append("%s.label is required." % where)
     if ftype == "choice":
@@ -174,6 +197,36 @@ def _check_setting(field, i, problems):
             clean_value(field, field["default"])
         except ValueError as e:
             problems.append("%s.default: %s" % (where, e))
+
+
+def _check_scoring(scoring, problems):
+    if not isinstance(scoring, dict):
+        problems.append("scoring must be an object.")
+        return None
+    if scoring.get("order") not in ("asc", "desc"):
+        problems.append("scoring.order must be 'asc' (lower is better) or 'desc' (higher is better).")
+    if scoring.get("counts", "first") not in ("first", "best"):
+        problems.append("scoring.counts must be 'first' or 'best'.")
+    if scoring.get("tiebreak", "seconds") not in ("seconds", "none"):
+        problems.append("scoring.tiebreak must be 'seconds' or 'none'.")
+    for bound in ("min", "max"):
+        if bound in scoring and not isinstance(scoring[bound], (int, float)):
+            problems.append("scoring.%s must be a number." % bound)
+    if not isinstance(scoring.get("decimals", 0), int):
+        problems.append("scoring.decimals must be a whole number.")
+    if not isinstance(scoring.get("free_play_scoreboard", True), bool):
+        problems.append("scoring.free_play_scoreboard must be true or false.")
+    return {
+        "label": scoring.get("label", "Score"),
+        "unit": scoring.get("unit", ""),
+        "order": scoring.get("order"),
+        "counts": scoring.get("counts", "first"),
+        "tiebreak": scoring.get("tiebreak", "seconds"),
+        "decimals": scoring.get("decimals", 0),
+        "min": scoring.get("min"),
+        "max": scoring.get("max"),
+        "free_play_scoreboard": scoring.get("free_play_scoreboard", True),
+    }
 
 
 def _check_scoreboards(sb, problems):
@@ -279,11 +332,11 @@ def validate(data):
     if not isinstance(data, dict):
         raise ManifestError("The manifest must be a JSON object.")
 
-    fmt = data.get("format")
-    if fmt != MANIFEST_FORMAT:
-        problems.append(
-            "format must be %d (this platform reads manifest format %d)." % (MANIFEST_FORMAT, MANIFEST_FORMAT)
-        )
+    if data.get("format") != MANIFEST_FORMAT:
+        problems.append("format must be %d." % MANIFEST_FORMAT)
+    gtype = data.get("type", "free-play")
+    if gtype not in GAME_TYPES:
+        problems.append("type must be 'free-play' or 'classroom'.")
     gid = data.get("id")
     if not isinstance(gid, str) or not ID_RE.match(gid):
         problems.append("id must be 3-100 lower-case letters, digits, '.', '_' or '-' (e.g. org.example.my-game).")
@@ -305,76 +358,63 @@ def validate(data):
     try:
         parse_spec(data.get("requires_platform", ""))
     except VersionError:
-        problems.append("requires_platform must look like '>=0.1' or '>=0.1,<2'.")
-    if "validator" in data and not (isinstance(data["validator"], str) and NAME_RE.match(data["validator"])):
-        problems.append("validator must be a validator name like 'number-hunt'.")
-    gtype = data.get("type", "free-play")
-    if gtype not in GAME_TYPES:
-        problems.append("type must be 'free-play' or 'classroom'.")
-    scoreboards = None
+        problems.append("requires_platform must look like '>=0.2' or '>=0.2,<1'.")
+
+    clean = dict(data)
+    clean["type"] = gtype
+    clean["entry"] = safe_relpath(data.get("entry", "index.html"))
+
     if gtype == "classroom":
-        for name in ("validator", "scoring", "settings", "data"):
+        for name in ("scoring", "settings", "data", "service", "wikipedia"):
             if name in data:
                 problems.append("Classroom Games can't use '%s'. Their scores come from their saved data." % name)
-        scoreboards = _check_scoreboards(data.get("scoreboards"), problems)
-    elif "scoreboards" in data:
-        problems.append("scoreboards is only for Classroom Games (type 'classroom').")
-
-    scoring = data.get("scoring")
-    if scoring is not None:
-        if not isinstance(scoring, dict):
-            problems.append("scoring must be an object.")
+        clean["scoreboards"] = _check_scoreboards(data.get("scoreboards"), problems)
+    else:
+        if "scoreboards" in data:
+            problems.append("scoreboards is only for Classroom Games (type 'classroom').")
+        service = data.get("service")
+        if service is not None and service not in SERVICES:
+            problems.append("service must be one of %s." % ", ".join(SERVICES))
+        if data.get("scoring") is not None:
+            clean["scoring"] = _check_scoring(data["scoring"], problems)
+        settings = data.get("settings", [])
+        if not isinstance(settings, list):
+            problems.append("settings must be a list.")
         else:
-            if scoring.get("order") not in ("asc", "desc"):
-                problems.append("scoring.order must be 'asc' (lower is better) or 'desc' (higher is better).")
-            if scoring.get("counts", "first") not in ("first", "best"):
-                problems.append("scoring.counts must be 'first' or 'best'.")
-            if scoring.get("tiebreak", "seconds") not in ("seconds", "none"):
-                problems.append("scoring.tiebreak must be 'seconds' or 'none'.")
-            for bound in ("min", "max"):
-                if bound in scoring and not isinstance(scoring[bound], (int, float)):
-                    problems.append("scoring.%s must be a number." % bound)
-            if not isinstance(scoring.get("decimals", 0), int):
-                problems.append("scoring.decimals must be a whole number.")
-
-    settings = data.get("settings", [])
-    if not isinstance(settings, list):
-        problems.append("settings must be a list.")
-    else:
-        seen = set()
-        for i, field in enumerate(settings):
-            _check_setting(field, i, problems)
-            key = field.get("key") if isinstance(field, dict) else None
-            if key in seen:
-                problems.append("settings key '%s' is used twice." % key)
-            seen.add(key)
-
-    sources = data.get("data", [])
-    if not isinstance(sources, list):
-        problems.append("data must be a list.")
-    else:
-        for i, src in enumerate(sources):
-            if not isinstance(src, dict) or not isinstance(src.get("name"), str) or not NAME_RE.match(src["name"]):
-                problems.append("data[%d].name must be a name like 'wikipedia'." % i)
+            seen = set()
+            for i, field in enumerate(settings):
+                _check_setting(field, i, problems, service)
+                key = field.get("key") if isinstance(field, dict) else None
+                if key in seen:
+                    problems.append("settings key '%s' is used twice." % key)
+                seen.add(key)
+        sources = data.get("data", [])
+        if not isinstance(sources, list):
+            problems.append("data must be a list.")
+        else:
+            for i, src in enumerate(sources):
+                if not isinstance(src, dict) or not isinstance(src.get("name"), str) or not NAME_RE.match(src["name"]):
+                    problems.append("data[%d].name must be a name like 'wikipedia'." % i)
+        if service == "wikipedia-race":
+            wiki = data.get("wikipedia", {})
+            if not isinstance(wiki, dict):
+                problems.append("wikipedia must be an object.")
+            elif "default_list" in wiki and safe_relpath(wiki["default_list"]) is None:
+                problems.append("wikipedia.default_list must be a relative path inside the game.")
+            names = [d.get("name") for d in sources if isinstance(d, dict)] if isinstance(sources, list) else []
+            if "wikipedia" not in names:
+                problems.append("Games that use wikipedia-race must list the 'wikipedia' data source.")
+            if not data.get("scoring"):
+                problems.append("Games that use wikipedia-race need a scoring section.")
+            types = {f.get("key"): f.get("type") for f in settings if isinstance(f, dict)} if isinstance(settings, list) else {}
+            if types.get("start") != "article" or types.get("goal") != "article" or types.get("list") != "article_list":
+                problems.append(
+                    "Games that use wikipedia-race need the settings 'start' and 'goal' (type article) "
+                    "and 'list' (type article_list)."
+                )
 
     if problems:
         raise ManifestError(problems)
-    clean = dict(data)
-    if scoring is not None:
-        clean["scoring"] = {
-            "label": scoring.get("label", "Score"),
-            "unit": scoring.get("unit", ""),
-            "order": scoring["order"],
-            "counts": scoring.get("counts", "first"),
-            "tiebreak": scoring.get("tiebreak", "seconds"),
-            "decimals": scoring.get("decimals", 0),
-            "min": scoring.get("min"),
-            "max": scoring.get("max"),
-        }
-    clean["entry"] = safe_relpath(data.get("entry", "index.html"))
-    clean["type"] = gtype
-    if scoreboards is not None:
-        clean["scoreboards"] = scoreboards
     return Manifest(clean)
 
 
@@ -419,14 +459,23 @@ def clean_value(field, value):
         if value not in allowed:
             raise ValueError("must be one of %s" % ", ".join(str(a) for a in allowed))
         return value
-    if ftype == "text":
+    if ftype in ("text", "article"):
+        # An "article" is a Wikipedia title; whether it exists is checked by the
+        # Wikipedia service when a coach saves it (see wikirace.py).
         if value is None:
             value = ""
         if not isinstance(value, str):
             raise ValueError("expected text")
-        if len(value) > int(field.get("max_length", 500)):
+        if len(value) > int(field.get("max_length", 500 if ftype == "text" else 300)):
             raise ValueError("is too long")
-        return value
+        return value.strip() if ftype == "article" else value
+    if ftype == "article_list":
+        # "default" (the game's own list), "all" (every article) or "list-<id>"
+        # (a list made by a coach). Whether a coach's list exists is checked
+        # when settings are saved.
+        if value == "default" or value == "all" or (isinstance(value, str) and re.match(r"^list-\d{1,9}$", value)):
+            return value
+        raise ValueError("must be an article list")
     raise ValueError("unknown type")
 
 

@@ -2,15 +2,16 @@
 kolibri manage kolibri_games_check
 
 Prints the plugin version, where it looks for games, which games it found
-(and why any can't be played), installed rule checkers, data sources and the
-address of the games page. Exits with status 1 if the page route is missing.
+(and why any can't be played), data sources (like the Wikipedia file) and
+whether libzim is installed, and the address of the games page. Exits with
+status 1 if the page route is missing.
 """
 import sys
 
 from django.core.management.base import BaseCommand
 from django.urls import get_resolver
 
-from kolibri_games import API_VERSION, __version__, registry, validators, views
+from kolibri_games import API_VERSION, __version__, registry, views
 
 
 def page_routes(patterns, prefix=""):
@@ -32,7 +33,12 @@ class Command(BaseCommand):
         out("Local game folders:")
         for d in registry.local_game_dirs():
             out("  %s" % d)
-        out("Rule checkers: %s" % (", ".join(sorted(validators.registry())) or "none"))
+        try:
+            import libzim  # noqa: F401
+
+            out("libzim: installed (Wiki BLAZE can read Wikipedia .zim files)")
+        except ImportError:
+            out("libzim: not installed (Wiki BLAZE needs it to read Wikipedia .zim files)")
         sources = registry.data_sources()
         out("Data sources (%s):" % registry.data_sources_file())
         for name, path in sorted(sources.items()):

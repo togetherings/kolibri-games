@@ -1,6 +1,6 @@
 /* Memory Match: a client-scored game. It has no rule checker on the server,
  * so its scores are marked "unchecked" for coaches. Each move is still logged
- * with KolibriGames.event() so coaches can review how a game went. */
+ * with KolibriGames.move() so coaches can review how a game went. */
 (function () {
   "use strict";
   var KG = window.KolibriGames;
@@ -54,7 +54,7 @@
 
   // Send move logs in order without making the player wait for them.
   function log(type, data) {
-    S.queue = S.queue.then(function () { return KG.event(type, data); }).catch(function () {});
+    S.queue = S.queue.then(function () { return KG.move(type, data); }).catch(function () {});
   }
 
   function deal() {

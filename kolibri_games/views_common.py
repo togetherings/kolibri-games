@@ -2,6 +2,7 @@
 import csv
 import io
 from html import escape
+from urllib.parse import unquote
 
 from . import API_VERSION, __version__
 
@@ -12,6 +13,8 @@ ASSET_TYPES = {
 }
 
 SDK_PATH = "__kolibri_games__/sdk.js"
+#: Pictures from the Wikipedia file, for games that use wikipedia-race (see wiki.py).
+WIKI_PREFIX = "__wiki__/"
 
 # Applied to every game file. "sandbox" keeps a game in an opaque origin even if
 # someone opens its URL directly, and the source lists stop games from loading
@@ -33,6 +36,7 @@ def game_file_headers():
 
 
 def card(service, game, player):
+    """A game as the games list shows it, with the viewer's own results and challenges."""
     data = {
         "key": game.key,
         "title": game.title,
@@ -44,27 +48,46 @@ def card(service, game, player):
         data.update(game.manifest.to_public())
         if game.playable:
             data["summary"] = service.summary(game, player)
+            if not game.is_classroom:
+                data["free_play_scoreboard"] = game.manifest.free_play_scoreboard
+                data["challenges"] = service.challenges_for(game, player)
     if game.is_classroom:
         data["resources"] = [r.public() for r in game.resources]
     return data
 
 
-def session(service, game, player):
+def session(service, game, player, challenge_id=None):
     """Everything the page needs to open a game (the caller adds play_url)."""
-    platform_settings, game_settings = service.settings(game, player.facility_id)
+    ctx = service.context(game, player, challenge_id)
     return {
         "game": dict(game.manifest.to_public(), key=game.key, origin=game.origin),
         "player": {"name": player.name, "role": player.role},
         "platform": {"version": __version__, "api": API_VERSION},
-        "settings": game_settings,
+        "settings": ctx.settings,
         "rules": {
-            "counts": platform_settings.get("counts"),
-            "scoreboard": platform_settings.get("scoreboard"),
-            "time_limit": (platform_settings.get("time_limit") or 0) * 60 or None,
+            "counts": ctx.counts,
+            "scoreboard": ctx.visibility,
+            "time_limit": ctx.time_limit or None,
+            "free_play_scoreboard": game.manifest.free_play_scoreboard,
         },
-        "summary": service.summary(game, player),
+        "challenge": service.challenge_public(game, ctx.challenge, player) if ctx.challenge else None,
+        "summary": service.challenge_summary(game, player, ctx.challenge) if ctx.challenge else service.summary(game, player),
         "sdk_path": SDK_PATH,
     }
+
+
+def wiki_file(service, game, path):
+    """(bytes, mimetype) of an image from the Wikipedia file, for a game that uses wikipedia-race."""
+    if game.manifest is None or game.manifest.service != "wikipedia-race":
+        return None
+    try:
+        source = service.wiki_source(game)
+    except Exception:
+        return None
+    found = source.read_file(unquote(path))
+    if found is None or not found[1].startswith("image/"):
+        return None  # only pictures: articles go through the race rules
+    return found
 
 
 def default_icon_svg(title, color):
@@ -119,21 +142,23 @@ def results_csv(data):
     out = io.StringIO()
     writer = csv.writer(out)
     label = (data.get("scoring") or {}).get("label", "Score")
-    writer.writerow(
-        ["Rank", "Name", "Counted %s" % label, "Counted seconds", "Verified", "Best %s" % label, "Attempts", "Last played"]
-    )
+    writer.writerow(["Rank", "Name", "Counted %s" % label, "Counted seconds", "Best %s" % label, "Attempts", "Last played", "Route"])
     for r in data["rows"]:
         counted, best = r["counted"] or {}, r["best"] or {}
+        route = ""
+        for a in r.get("history") or []:
+            if counted and a["id"] == counted.get("id"):
+                route = " > ".join((a.get("detail") or {}).get("route") or [])
         writer.writerow(
             [
                 r["rank"] or "",
                 r["name"],
                 counted.get("score", ""),
                 counted.get("seconds", ""),
-                "yes" if counted.get("verified") else ("no" if counted else ""),
                 best.get("score", ""),
                 r["attempts"],
                 r["last_played"] or "",
+                route,
             ]
         )
     return out.getvalue()

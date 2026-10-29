@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kolibri-games"
 dynamic = ["version"]
-description = "A Kolibri plugin for playing sandboxed games with sign-ins, server-checked scores, leaderboards and coach tools."
+description = "A Kolibri plugin for learning games: Free-play Games, Classroom Games, class challenges, scoreboards and Wiki BLAZE."
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 authors = [{ name = "Togetherings" }]
-keywords = ["kolibri", "games", "education", "offline", "internet-in-a-box", "zim"]
+keywords = ["kolibri", "games", "education", "offline", "internet-in-a-box", "wikipedia"]
 classifiers = [
     "Framework :: Django",
     "Programming Language :: Python :: 3",
@@ -19,7 +19,11 @@ classifiers = [
 ]
 # Kolibri itself is deliberately NOT listed, so pip never replaces the Kolibri
 # that's already installed (for example by Internet-in-a-Box).
-dependencies = ["libzim>=3.1"]
+dependencies = []
+
+[project.optional-dependencies]
+# Wiki BLAZE reads Wikipedia .zim files with libzim. install.sh installs it.
+wikipedia = ["libzim>=3.1"]
 
 [project.urls]
 Homepage = "https://github.com/togetherings/kolibri-games"
@@ -36,7 +40,6 @@ kolibri_games = "kolibri_games"
 [tool.setuptools]
 packages = [
     "kolibri_games",
-    "kolibri_games.validators",
     "kolibri_games.migrations",
     "kolibri_games.management",
     "kolibri_games.management.commands",

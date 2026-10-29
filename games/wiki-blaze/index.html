@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wiki BLAZE</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Shown while playing: where you are going, your chain of articles, links and time. -->
+  <header class="hud" id="hud" hidden>
+    <div class="hud-row">
+      <p class="target">From <b id="hud-start"></b> to <b class="goal" id="hud-goal"></b></p>
+      <p class="stats"><span id="hud-links">0 links</span> <span id="hud-clock" class="clock">0:00</span></p>
+    </div>
+    <nav aria-label="Your chain of articles">
+      <ol class="chain" id="chain"></ol>
+    </nav>
+  </header>
+
+  <main>
+    <section id="intro" class="screen">
+      <h1>Wiki <span class="blaze">BLAZE</span></h1>
+      <p class="tagline">Browsing Links A-to-Z Exploration</p>
+      <p class="lead">Start on one Wikipedia article and reach the goal article by clicking links.
+        Use as few links as you can.</p>
+      <div class="pair" id="intro-pair" hidden>
+        <div><span class="label">Start</span><b id="intro-start"></b></div>
+        <div class="arrow" aria-hidden="true">&rarr;</div>
+        <div><span class="label">Goal</span><b id="intro-goal"></b></div>
+      </div>
+      <ul class="rules">
+        <li>Only links in the article count. You can't search or type an address.</li>
+        <li>Took a wrong turn? Click any earlier article in your chain to go back to it. It doesn't count against you.</li>
+        <li>Your score is the number of links from the start to the goal. If two players tie, the faster one wins.</li>
+      </ul>
+      <p class="note" id="intro-rule"></p>
+      <button type="button" class="go" id="btn-start">Start</button>
+      <p class="note warn" id="intro-error" role="alert" hidden></p>
+    </section>
+
+    <section id="play" class="screen" hidden>
+      <p class="note warn" id="play-error" role="alert" hidden></p>
+      <article class="article" id="page" aria-live="polite"></article>
+    </section>
+
+    <section id="done" class="screen" hidden>
+      <h1 id="done-title"></h1>
+      <p class="lead" id="done-summary"></p>
+      <ol class="route" id="done-route" aria-label="Your route"></ol>
+      <p class="note" id="done-standing"></p>
+      <table class="board" id="board" hidden>
+        <thead><tr><th>#</th><th>Name</th><th class="num">Links</th><th class="num">Time</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="actions">
+        <button type="button" class="go" id="btn-again">Play again</button>
+        <button type="button" id="btn-exit">Back to games</button>
+      </div>
+    </section>
+  </main>
+  <script src="__kolibri_games__/sdk.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
