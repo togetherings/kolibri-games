@@ -185,7 +185,7 @@ if zim:
 else:
     print("skip channel discovery test (KOLIBRI_GAMES_TEST_ZIM not set)")
 
-# ------------------------------------------------------------ Lesson Games
+# ------------------------------------------------------------ Classroom Games
 
 try:
     import zipfile
@@ -195,7 +195,7 @@ try:
     from kolibri.core.content.utils.paths import get_content_storage_file_path
     from kolibri.core.logger.models import ContentSummaryLog
 
-    LIT = os.path.join(os.getcwd(), "examples", "lesson-games", "lit")  # run from the repository folder
+    LIT = os.path.join(os.getcwd(), "examples", "classroom-games", "lit")  # run from the repository folder
 
     def html5_resource(title, with_manifest=True):
         checksum = uuid.uuid4().hex
@@ -230,11 +230,11 @@ try:
     played(ben, lesson1, {"en-01": {"done": 1, "acc": 97, "wpm": 20}})
     LIT_KEY = "g-org.togetherings.lit"
     games = {g.key: g for g in registry.discover(refresh=True)}
-    check(LIT_KEY in games and len(games[LIT_KEY].resources) == 2, "HTML5 apps with a Lesson Game manifest form one game")
+    check(LIT_KEY in games and len(games[LIT_KEY].resources) == 2, "HTML5 apps with a Classroom Game manifest form one game")
     check("c-" + plain.content_id not in games, "ordinary HTML5 apps are left alone")
     status, data = jget(learner, base + "api/games")
     card = [g for g in data["games"] if g["key"] == LIT_KEY]
-    check(bool(card) and card[0]["summary"]["boards"] == 1, "Lesson Game card shows the learner's progress: %s" % card)
+    check(bool(card) and card[0]["summary"]["boards"] == 1, "Classroom Game card shows the learner's progress: %s" % card)
     status, scores = jget(learner, base + "api/games/%s/scoreboards" % LIT_KEY)
     board = scores["boards"][0] if status == 200 and scores["boards"] else {}
     rows = [(r["rank"], r["name"], r["values"]) for r in board.get("rows", [])]
@@ -242,9 +242,9 @@ try:
           "scoreboard read from Kolibri's saved data, best of both copies: %s" % rows)
     check(board.get("name") in ("Lesson 1: Left-hand home keys", "Lesson 1 again"), "board named after its resource")
     status, _ = jget(learner, base + "api/games/%s" % LIT_KEY)
-    check(status == 409, "Lesson Games can't be opened on the games page (%s)" % status)
+    check(status == 409, "Classroom Games can't be opened on the games page (%s)" % status)
     status, s = jpost(c, base + "api/games/%s/settings" % LIT_KEY, {"platform": {"leaderboard": "initials"}})
-    check(status == 200, "coach changed the Lesson Game's scoreboard setting")
+    check(status == 200, "coach changed the Classroom Game's scoreboard setting")
     status, scores = jget(other, base + "api/games/%s/scoreboards" % LIT_KEY)
     check([r["name"] for r in scores["boards"][0]["rows"]] == ["A.T.", "Ben Test"], "learners now see initials")
     r = c.get(base + "api/games/%s/scoreboards?format=csv&class=%s" % (LIT_KEY, classroom.id))
@@ -253,7 +253,7 @@ except Exception as e:  # noqa: BLE001
     import traceback
 
     traceback.print_exc()
-    check(False, "Lesson Games test crashed: %r" % e)
+    check(False, "Classroom Games test crashed: %r" % e)
 
 print()
 if FAILURES:

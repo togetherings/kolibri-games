@@ -1,8 +1,8 @@
 """
-Lesson Games: HTML5 apps in Kolibri channels that learners open from Learn.
+Classroom Games: HTML5 apps in Kolibri channels that learners open from Learn.
 
 Kolibri keeps each learner's saved data for an HTML5 app (for example SCORM
-``cmi.suspend_data``) on the server. A Lesson Game's ``kolibri-game.json``
+``cmi.suspend_data``) on the server. A Classroom Game's ``kolibri-game.json``
 says how to read scores out of that data. This module turns the saved data of
 every resource (lesson) of one game into scoreboards, so the games page can
 show them. No Django or Kolibri imports.
@@ -155,7 +155,7 @@ def combine(spec, entries):
 # ---------------------------------------------------------------- the game
 
 
-class LessonResource(object):
+class ClassroomResource(object):
     """One HTML5 app in a channel (or several copies of it with the same content id)."""
 
     def __init__(self, source, manifest, content):
@@ -176,11 +176,11 @@ class LessonResource(object):
         return {"content_id": self.content_id, "node_id": self.node_ids[0], "title": self.title}
 
 
-class LessonGame(object):
+class ClassroomGame(object):
     """The umbrella over every resource that shares one manifest id."""
 
     origin = "channel"
-    is_lesson = True
+    is_classroom = True
 
     def __init__(self, resources):
         resources = sorted(resources, key=lambda r: natural_key(r.title))
@@ -210,7 +210,7 @@ class LessonGame(object):
             "key": self.key,
             "origin": self.origin,
             "kind": self.source.kind,
-            "type": "lesson",
+            "type": "classroom",
             "location": self.source.location,
             "title": self.title,
             "version": self.manifest.version,
@@ -239,7 +239,7 @@ def merged_spec(manifests, newest):
 
 
 def group_resources(resources):
-    """[LessonGame] from LessonResources, one game per manifest id. Copies of a content id are joined."""
+    """[ClassroomGame] from ClassroomResources, one game per manifest id. Copies of a content id are joined."""
     by_content = {}
     for r in resources:
         if r.content_id in by_content:
@@ -249,7 +249,7 @@ def group_resources(resources):
     by_id = {}
     for r in by_content.values():
         by_id.setdefault(r.manifest.id, []).append(r)
-    return [LessonGame(rs) for rs in by_id.values()]
+    return [ClassroomGame(rs) for rs in by_id.values()]
 
 
 # -------------------------------------------------------------- scoreboards
@@ -295,7 +295,7 @@ def public_spec(spec):
 
 
 def scoreboards(game, saves, viewer_id, visibility="names"):
-    """Everything the games page shows for a Lesson Game."""
+    """Everything the games page shows for a Classroom Game."""
     spec = game.spec
     resources = {r.content_id: r for r in game.resources}
     boards = collect(game, saves)

@@ -20,7 +20,7 @@ def serve(port):
     os.environ["KOLIBRI_GAMES_DEV_QUIET"] = "1"
     from kolibri_games import devserver, registry
 
-    devserver.load_lessons(os.path.join(ROOT, "examples", "lesson-games", "preview.json"))
+    devserver.load_classroom(os.path.join(ROOT, "examples", "classroom-games", "preview.json"))
     registry.discover(refresh=True)
     server = ThreadingHTTPServer(("127.0.0.1", port), devserver.Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -90,7 +90,7 @@ def main():
             # Lobby as Amina
             page.goto(base + "?as=amina")
             page.locator(".game").first.wait_for()
-            assert page.locator(".game").count() == 4, "expected two Standalone Games and two Lesson Games"
+            assert page.locator(".game").count() == 4, "expected two Free-play Games and two Classroom Games"
             if shots:
                 page.screenshot(path=os.path.join(shots, "1-lobby.png"), full_page=True)
 
@@ -122,7 +122,11 @@ def main():
 
             # Exit button returns to the lobby
             frame.locator("#btn-exit").click()
-            page.locator(".shelf").wait_for()
+            page.locator("#free-play .shelf").wait_for()
+            # Free-play Games come first, then Classroom Games
+            sections = page.locator(".shelf-section .shelf-title").all_inner_texts()
+            assert sections == ["Free-play Games", "Classroom Games"], sections
+            assert page.locator("#classroom .game h3").all_inner_texts() == ["Lessons In Typing", "Studies In Geography"]
 
             # Memory Match: client-scored
             page.goto(base + "#/play/l-org.togetherings.memory-match")
@@ -166,11 +170,11 @@ def main():
             frame.locator("#intro-high").wait_for()
             assert frame.locator("#intro-high").inner_text() == "20"
 
-            # Lesson Games: scoreboards read from (pretend) saved data in Learn
+            # Classroom Games: scoreboards read from (pretend) saved data in Learn
             page.goto(base + "?as=amina#/")
             card = page.locator(".game", has_text="Studies In Geography")
             assert "scores on 3 maps" in card.inner_text(), card.inner_text()
-            card.locator("text=Scoreboards").click()
+            card.locator("text=Scoreboard").click()
             page.locator(".scores").wait_for()
             page.locator(".board-link", has_text="Sierra Leone: regions").click()
             page.locator(".panel.board h2:has-text('Sierra Leone: regions')").wait_for()
@@ -180,7 +184,7 @@ def main():
             assert "Amina Learner (you)" in first and "100%" in first and "5:00" in first and "6" in first, first
             assert "Maps of the world" in page.locator(".panel.board").inner_text()
             if shots:
-                page.screenshot(path=os.path.join(shots, "9-lesson-scoreboards.png"), full_page=True)
+                page.screenshot(path=os.path.join(shots, "9-classroom-scoreboards.png"), full_page=True)
             # LIT: unfinished lessons ("done": 0) don't count; board names come from the resource.
             page.goto(base + "#/scores/g-org.togetherings.lit")
             page.locator(".board-link").first.wait_for()

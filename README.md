@@ -5,20 +5,20 @@ offline learning games, built with [Internet-in-a-Box](https://internet-in-a-box
 
 - **Games are content, not code in the plugin.** Games come in Kolibri channels (or can be
   copied onto a device), so adding a game never means changing the plugin.
-- **Two kinds of game.** *Standalone Games* are small ZIM files played on the games page.
-  *Lesson Games* are ordinary HTML5 apps that learners open from Learn and coaches assign in
+- **Two kinds of game.** *Free-play Games* are small ZIM files played on the games page.
+  *Classroom Games* are ordinary HTML5 apps that learners open from Learn and coaches assign in
   lessons; the games page shows scoreboards from the scores they save.
-- **Learners sign in with Kolibri.** Results are saved to their account, with leaderboards per
+- **Learners sign in with Kolibri.** Results are saved to their account, with scoreboards per
   facility or class.
 - **Scores can be trusted.** Games run in a locked-down sandbox, and a game can have a *rule
   checker* on the server that keeps secrets and works out the score itself.
 - **Coaches stay in control.** They can see every learner's attempts and moves, export results
-  as CSV, choose whether the first or best attempt counts, hide or anonymise leaderboards, set
+  as CSV, choose whether the first or best attempt counts, hide or anonymise scoreboards, set
   time limits, change each game's options, and give a learner a fresh start.
 
-It comes with two sample Standalone Games: **Number Hunt** (scores checked by the server) and
-**Memory Match** (scores reported by the game). Example Lesson Game manifests for Lessons In
-Typing and Studies In Geography are in [examples/lesson-games](examples/lesson-games).
+It comes with two sample Free-play Games: **Number Hunt** (scores checked by the server) and
+**Memory Match** (scores reported by the game). Example Classroom Game manifests for Lessons In
+Typing and Studies In Geography are in [examples/classroom-games](examples/classroom-games).
 
 ## Install
 
@@ -51,7 +51,7 @@ account, and come straight back to the games page afterwards.
 
 ### Adding games
 
-- **From a channel:** import a Kolibri channel that contains game ZIMs or Lesson Games. Every
+- **From a channel:** import a Kolibri channel that contains game ZIMs or Classroom Games. Every
   game in an imported channel appears on the games page automatically.
 - **From a file:** copy a game's `.zim` file into `<KOLIBRI_HOME>/kolibri_games/games/`
   (on IIAB: `/library/kolibri/kolibri_games/games/`).
@@ -66,17 +66,17 @@ sudo -u kolibri KOLIBRI_HOME=/library/kolibri kolibri manage kolibri_games_check
 
 ## Making games
 
-A Standalone Game is a folder with a `kolibri-game.json` manifest and ordinary web files (HTML,
+A Free-play Game is a folder with a `kolibri-game.json` manifest and ordinary web files (HTML,
 JavaScript, CSS, images), using a small JavaScript SDK to start attempts, report moves and finish
 with a score. See **[docs/GAME_FORMAT.md](docs/GAME_FORMAT.md)**.
 
-A Lesson Game is any Kolibri HTML5 app that saves its scores in SCORM `cmi.suspend_data`, plus a
-`kolibri-game.json` that says how to read them. See **[docs/LESSON_GAMES.md](docs/LESSON_GAMES.md)**.
+A Classroom Game is any Kolibri HTML5 app that saves its scores in SCORM `cmi.suspend_data`, plus a
+`kolibri-game.json` that says how to read them. See **[docs/CLASSROOM_GAMES.md](docs/CLASSROOM_GAMES.md)**.
 
 ```bash
 pip install kolibri-games        # or: pip install -e . in this repository
 kolibri-games-preview games/     # try games in a browser without Kolibri
-kolibri-games-preview games/ --lessons examples/lesson-games/preview.json  # with Lesson Games
+kolibri-games-preview games/ --classroom examples/classroom-games/preview.json  # with Classroom Games
 kolibri-games-pack games/my-game # package as dist/<id>_<version>.zim
 ```
 

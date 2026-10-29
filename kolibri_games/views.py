@@ -119,8 +119,8 @@ def _game(key, playable=True):
     game = registry.get(key)
     if game is None or game.manifest is None:
         raise PlatformError("That game isn't on this device.", "not_found", 404)
-    if playable and game.is_lesson:
-        raise PlatformError("This is a Lesson Game. Open it from Learn.", "lesson_game", 409)
+    if playable and game.is_classroom:
+        raise PlatformError("This is a Classroom Game. Open it from Learn.", "lesson_game", 409)
     if playable and not game.playable:
         raise PlatformError(" ".join(game.problems) or "This game can't be played.", "unplayable", 409)
     return game

@@ -1,18 +1,18 @@
-"""Lesson Games: manifests, reading saved data, merging and ranking scoreboards."""
+"""Classroom Games: manifests, reading saved data, merging and ranking scoreboards."""
 import json
 import os
 import zipfile
 
 import pytest
 
-from kolibri_games import lessons
+from kolibri_games import classroom
 from kolibri_games import manifest as mf
 from kolibri_games.registry import check
 from kolibri_games.service import GameService, MemoryStore, Player
 from kolibri_games.sources import FolderSource, ZipSource
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXAMPLES = os.path.join(ROOT, "examples", "lesson-games")
+EXAMPLES = os.path.join(ROOT, "examples", "classroom-games")
 FACILITY = "f" * 32
 AMINA = Player("a" * 32, "Amina Learner", FACILITY)
 BEN = Player("b" * 32, "Ben Learner", FACILITY)
@@ -25,7 +25,7 @@ def example(name):
 
 def resource(name, content_id, title):
     source = FolderSource(os.path.join(EXAMPLES, name))
-    return lessons.LessonResource(source, source.manifest(), {"content_id": content_id, "node_id": "n" + content_id[1:], "title": title})
+    return classroom.ClassroomResource(source, source.manifest(), {"content_id": content_id, "node_id": "n" + content_id[1:], "title": title})
 
 
 def scorm(data):
@@ -34,21 +34,21 @@ def scorm(data):
 
 
 def save(store, player, content_id, data):
-    store.add_lesson_save(player, content_id, scorm(data))
+    store.add_classroom_save(player, content_id, scorm(data))
 
 
 # ----------------------------------------------------------------- manifest
 
 
-def test_example_manifests_are_valid_lesson_games():
+def test_example_manifests_are_valid_classroom_games():
     for name in ("lit", "singe"):
         m = example(name)
-        assert m.is_lesson and m.scoreboards["rank_by"]
+        assert m.is_classroom and m.scoreboards["rank_by"]
         assert [f["key"] for f in m.platform_settings_schema()] == ["leaderboard"]
         assert m.platform_settings_schema()[0]["default"] == "names"
 
 
-def test_lesson_manifest_problems_are_reported():
+def test_classroom_manifest_problems_are_reported():
     base = json.load(open(os.path.join(EXAMPLES, "lit", "kolibri-game.json")))
     bad = dict(base, validator="number-hunt", scoring={"order": "asc"})
     with pytest.raises(mf.ManifestError) as e:
@@ -65,51 +65,51 @@ def test_lesson_manifest_problems_are_reported():
         mf.validate(dict(base, type="arcade"))
 
 
-def test_standalone_games_cant_have_scoreboards_and_lesson_games_arent_playable_locally():
+def test_free_play_games_cant_have_scoreboards_and_classroom_games_arent_playable_locally():
     data = json.load(open(os.path.join(ROOT, "games", "number-hunt", "kolibri-game.json")))
     with pytest.raises(mf.ManifestError):
         mf.validate(dict(data, scoreboards={}))
     m = example("lit")
-    assert "Lesson Game" in check(m, FolderSource(os.path.join(EXAMPLES, "lit")))[0]
+    assert "Classroom Game" in check(m, FolderSource(os.path.join(EXAMPLES, "lit")))[0]
 
 
 # ----------------------------------------------------------- reading data
 
 
 def test_suspend_data_is_read_from_nested_or_flat_scorm_keys():
-    assert lessons.suspend_data(scorm({"a": 1})) == {"a": 1}
-    assert lessons.suspend_data({"SCORM": {"cmi.suspend_data": '{"b": 2}'}}) == {"b": 2}
+    assert classroom.suspend_data(scorm({"a": 1})) == {"a": 1}
+    assert classroom.suspend_data({"SCORM": {"cmi.suspend_data": '{"b": 2}'}}) == {"b": 2}
     for broken in (None, {}, {"SCORM": {}}, {"SCORM": {"cmi": {"suspend_data": "not json"}}},
                    {"SCORM": {"cmi": {"suspend_data": "[1, 2]"}}}, {"SCORM": {"cmi": {"suspend_data": "x" * 70000}}}):
-        assert lessons.suspend_data(broken) is None
+        assert classroom.suspend_data(broken) is None
 
 
 def test_reading_lit_skips_unfinished_lessons():
     spec = example("lit").scoreboards
-    found = lessons.read_boards(spec, scorm({"en-01": {"done": 1, "acc": 96, "wpm": 14}, "en-02": {"done": 0, "acc": 0, "wpm": 0}}))
+    found = classroom.read_boards(spec, scorm({"en-01": {"done": 1, "acc": 96, "wpm": 14}, "en-02": {"done": 0, "acc": 0, "wpm": 0}}))
     assert found == {"en-01": {"acc": 96, "wpm": 14}}
 
 
 def test_reading_singe_lists_by_position_and_ignores_junk():
     spec = example("singe").scoreboards
-    found = lessons.read_boards(spec, scorm({"us": [92, 140, 5], "us_flags": ["70", 99.5, 1], "bad": "x", "": [1, 2, 3]}))
+    found = classroom.read_boards(spec, scorm({"us": [92, 140, 5], "us_flags": ["70", 99.5, 1], "bad": "x", "": [1, 2, 3]}))
     assert found == {"us": {"acc": 92, "time": 140, "plays": 5}, "us_flags": {"acc": 70, "time": 99.5, "plays": 1}}
 
 
 def test_board_names_from_rules_and_names():
     spec = example("singe").scoreboards
-    assert lessons.board_name(spec, "us") == "United States: regions"
-    assert lessons.board_name(spec, "us_capitals") == "United States: capitals"
-    assert lessons.board_name(spec, "world_all_flags") == "World (all countries): flags"
-    assert lessons.board_name(spec, "mars_flags") == "mars: flags"
-    assert lessons.board_name(example("lit").scoreboards, "en-01") is None
+    assert classroom.board_name(spec, "us") == "United States: regions"
+    assert classroom.board_name(spec, "us_capitals") == "United States: capitals"
+    assert classroom.board_name(spec, "world_all_flags") == "World (all countries): flags"
+    assert classroom.board_name(spec, "mars_flags") == "mars: flags"
+    assert classroom.board_name(example("lit").scoreboards, "en-01") is None
 
 
 # ---------------------------------------------------------- scoreboards
 
 
 def singe_game():
-    return lessons.group_resources([resource("singe", "4" * 32, "Maps of Sierra Leone"), resource("singe", "5" * 32, "Maps of the world")])[0]
+    return classroom.group_resources([resource("singe", "4" * 32, "Maps of Sierra Leone"), resource("singe", "5" * 32, "Maps of the world")])[0]
 
 
 def test_reused_boards_merge_best_result_and_add_up_plays():
@@ -128,7 +128,7 @@ def test_reused_boards_merge_best_result_and_add_up_plays():
 
 
 def test_speed_ranks_higher_first_and_time_ranks_lower_first():
-    lit = lessons.group_resources([resource("lit", "1" * 32, "Lesson 1")])[0]
+    lit = classroom.group_resources([resource("lit", "1" * 32, "Lesson 1")])[0]
     store = MemoryStore()
     save(store, AMINA, "1" * 32, {"en-01": {"done": 1, "acc": 95, "wpm": 12}})
     save(store, BEN, "1" * 32, {"en-01": {"done": 1, "acc": 95, "wpm": 20}})
@@ -178,7 +178,7 @@ def test_class_filter_and_other_facilities():
 
 
 def test_lit_boards_are_named_after_their_resource_and_summary_counts_mine():
-    game = lessons.group_resources([resource("lit", "1" * 32, "Lesson 1: Left-hand home keys"), resource("lit", "2" * 32, "Lesson 10: Numbers")])[0]
+    game = classroom.group_resources([resource("lit", "1" * 32, "Lesson 1: Left-hand home keys"), resource("lit", "2" * 32, "Lesson 10: Numbers")])[0]
     store = MemoryStore()
     service = GameService(store)
     save(store, AMINA, "1" * 32, {"en-01": {"done": 1, "acc": 96, "wpm": 14}})
@@ -195,13 +195,13 @@ def test_resources_group_into_one_game_per_id_using_the_newest_manifest():
     old["scoreboards"]["board_names"] = {"mars": "Mars"}
     old_m = mf.validate(old)
     new = resource("singe", "5" * 32, "World")
-    older = lessons.LessonResource(new.source, old_m, {"content_id": "6" * 32, "node_id": "x", "title": "Mars maps"})
+    older = classroom.ClassroomResource(new.source, old_m, {"content_id": "6" * 32, "node_id": "x", "title": "Mars maps"})
     copy = resource("singe", "5" * 32, "World (copy in another channel)")
-    games = lessons.group_resources([older, new, copy, resource("lit", "1" * 32, "Lesson 1")])
+    games = classroom.group_resources([older, new, copy, resource("lit", "1" * 32, "Lesson 1")])
     singe = [g for g in games if g.manifest.id == "org.togetherings.singe"][0]
     assert singe.key == "g-org.togetherings.singe" and singe.title == "Studies In Geography"
     assert sorted(singe.content_ids) == ["5" * 32, "6" * 32]
-    assert lessons.board_name(singe.spec, "mars_flags") == "Mars: flags"
+    assert classroom.board_name(singe.spec, "mars_flags") == "Mars: flags"
     assert len(games) == 2
 
 

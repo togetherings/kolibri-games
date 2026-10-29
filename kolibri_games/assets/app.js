@@ -1,4 +1,4 @@
-/* Kolibri Games shell: lobby, play, leaderboards and coach pages.
+/* Kolibri Games shell: lobby, play, scoreboards and coach pages.
  * Plain JavaScript with no external libraries, so it works offline.
  *
  * Games run in a sandboxed iframe (no access to the Kolibri session). They
@@ -175,9 +175,9 @@
       if (summary && summary.first_used) {
         return el("span", { class: "rule-note practice", text: "Your first attempt is done. Playing again is practice." });
       }
-      return el("span", { class: "rule-note", text: "Your first attempt counts on the leaderboard." });
+      return el("span", { class: "rule-note", text: "Your first attempt counts on the scoreboard." });
     }
-    return el("span", { class: "rule-note", text: "Your best attempt counts on the leaderboard." });
+    return el("span", { class: "rule-note", text: "Your best attempt counts on the scoreboard." });
   }
 
   // ---------------------------------------------------------------- lobby
@@ -188,17 +188,32 @@
       var head = el("div", { class: "page-head" }, [
         el("div", {}, [
           el("h1", { text: "Games" }),
-          el("p", { text: games.length ? "Pick a game to play. Your results are saved to your Kolibri account." : "" })
+          el("p", { text: games.length ? "Your results are saved to your Kolibri account." : "" })
         ])
       ]);
       if (!games.length) {
         setView([head, emptyShelf()]);
         return;
       }
-      var list = el("ul", { class: "shelf" });
-      games.forEach(function (g) { list.appendChild(gameCard(g)); });
-      setView([head, list]);
+      var classroom = games.filter(function (g) { return g.type === "classroom" && g.playable; });
+      var freePlay = games.filter(function (g) { return classroom.indexOf(g) < 0; });
+      setView([
+        head,
+        shelfSection("free-play", "Free-play Games", "Play these here, anytime.", freePlay),
+        shelfSection("classroom", "Classroom Games", "Play these in Learn. Here you can see their scoreboards.", classroom)
+      ]);
     }).catch(showError);
+  }
+
+  function shelfSection(id, title, intro, games) {
+    if (!games.length) return null;
+    var list = el("ul", { class: "shelf" });
+    games.forEach(function (g) { list.appendChild(gameCard(g)); });
+    return el("section", { class: "shelf-section", id: id, "aria-labelledby": id + "-title" }, [
+      el("h2", { class: "shelf-title", id: id + "-title", text: title }),
+      el("p", { class: "shelf-intro", text: intro }),
+      list
+    ]);
   }
 
   function emptyShelf() {
@@ -223,15 +238,14 @@
     return "../learn/#/topics/c/" + encodeURIComponent(nodeId);
   }
 
-  function lessonCard(g) {
+  function classroomCard(g) {
     var s = g.summary || {};
     var label = (g.scoreboards && g.scoreboards.board_label) || "Scoreboard";
     var facts = [
-      el("span", { class: "tag lesson", text: "Lesson Game" }),
       el("span", { text: plural((g.resources || []).length, "resource") + " in Learn" }),
       el("span", { text: s.boards ? "You have scores on " + plural(s.boards, label) : "No scores from you yet" })
     ];
-    var actions = [el("a", { class: "button primary", href: "#/scores/" + g.key, text: "Scoreboards" })];
+    var actions = [el("a", { class: "button primary", href: "#/scores/" + g.key, text: "Scoreboard" })];
     if ((g.resources || []).length === 1) {
       actions.push(el("a", { class: "button quiet", href: learnUrl(g.resources[0].node_id), text: "Open in Learn" }));
     }
@@ -239,7 +253,7 @@
     return el("li", { class: "game" }, [
       el("img", { class: "game-icon", src: "api/games/" + g.key + "/icon", alt: "" }),
       el("div", {}, [
-        el("h2", { text: g.title }),
+        el("h3", { text: g.title }),
         g.description ? el("p", { class: "desc", text: g.description }) : null,
         el("div", { class: "facts" }, facts)
       ]),
@@ -248,7 +262,7 @@
   }
 
   function gameCard(g) {
-    if (g.type === "lesson" && g.playable) return lessonCard(g);
+    if (g.type === "classroom" && g.playable) return classroomCard(g);
     var unplayable = !g.playable;
     var facts = [];
     var s = g.summary;
@@ -266,7 +280,7 @@
     var actions = [];
     if (!unplayable) {
       actions.push(el("a", { class: "button primary", href: "#/play/" + g.key, text: "Play" }));
-      if (g.scoring) actions.push(el("a", { class: "button quiet", href: "#/board/" + g.key, text: "Leaderboard" }));
+      if (g.scoring) actions.push(el("a", { class: "button quiet", href: "#/board/" + g.key, text: "Scoreboard" }));
     }
     if (S.me.role !== "learner" && g.id) {
       if (g.scoring) actions.push(el("a", { class: "button quiet", href: "#/results/" + g.key, text: "Results" }));
@@ -275,7 +289,7 @@
     return el("li", { class: "game" + (unplayable ? " unplayable" : "") }, [
       g.id ? el("img", { class: "game-icon", src: "api/games/" + g.key + "/icon", alt: "" }) : el("div", { class: "game-icon" }),
       el("div", {}, [
-        el("h2", { text: g.title }),
+        el("h3", { text: g.title }),
         g.description ? el("p", { class: "desc", text: g.description }) : null,
         facts.length ? el("div", { class: "facts" }, facts) : null,
         !unplayable ? el("div", { class: "facts", style: "margin-top:.35rem" }, [rulesNote(g, s)]) : null,
@@ -461,7 +475,7 @@
     );
   }
 
-  // ----------------------------------------------------------- leaderboard
+  // ------------------------------------------------- Free-play scoreboard
 
   function classPicker(selected, onChange, allowEveryone) {
     return loadClasses().then(function (data) {
@@ -486,7 +500,7 @@
         var head = el("div", { class: "page-head" }, [
           el("div", {}, [
             el("a", { class: "crumb", href: "#/", text: "Games" }),
-            el("h1", { text: g.title + " leaderboard" }),
+            el("h1", { text: g.title + " scoreboard" }),
             el("p", { text: data.counts === "first" ? "Each player's first attempt." : "Each player's best attempt." })
           ]),
           el("div", { class: "row" }, [picker, el("a", { class: "button primary", href: "#/play/" + key, text: "Play" })])
@@ -552,7 +566,7 @@
     var head = el("div", { class: "page-head" }, [
       el("div", {}, [
         el("a", { class: "crumb", href: "#/", text: "Games" }),
-        el("h1", { text: g.title + " scoreboards" }),
+        el("h1", { text: g.title + " scoreboard" }),
         el("p", { text: "Scores from playing " + g.title + " in Learn. Each learner's best result counts." })
       ]),
       el("div", { class: "row" }, [picker, coach && data.boards.length ? el("a", { class: "button", href: csv, text: "Download CSV" }) : null])
@@ -798,7 +812,7 @@
       el("div", { class: "page-head" }, [el("div", {}, [
         el("a", { class: "crumb", href: "#/", text: "Games" }),
         el("h1", { text: g.title + " settings" }),
-        el("p", { text: g.type === "lesson"
+        el("p", { text: g.type === "classroom"
           ? "These settings apply to everyone in your facility."
           : "These settings apply to everyone in your facility. Changes apply to attempts started after you save." })
       ])]),
@@ -816,7 +830,7 @@
         rows.appendChild(el("tr", {}, [
           el("td", {}, [g.title, g.playable ? el("span", { class: "tag ok", text: "ready" }) : el("span", { class: "tag warn", text: "can't play" })]),
           el("td", { text: (g.version || "") }),
-          el("td", { text: (g.origin === "channel" ? "Channel" : "Local folder") + (g.type === "lesson" ? " (Lesson Game, " + plural(g.content.resources.length, "resource") + ")" : "") }),
+          el("td", { text: (g.origin === "channel" ? "Channel" : "Local folder") + (g.type === "classroom" ? " (Classroom Game, " + plural(g.content.resources.length, "resource") + ")" : "") }),
           el("td", {}, [el("code", { text: g.location }),
             g.problems.length ? el("ul", { class: "problems" }, g.problems.map(function (p) { return el("li", { text: p }); })) : null])
         ]));

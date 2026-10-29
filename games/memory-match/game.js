@@ -124,7 +124,7 @@
       $("done-title").textContent = "All pairs found!";
       $("done-summary").textContent = "You found " + S.pairs + " pairs in " + a.score + " moves and " + clock(a.seconds) + ". A perfect game takes " + S.pairs + " moves.";
       $("done-standing").textContent = res.standing
-        ? "Your best result is number " + res.standing.rank + " of " + res.standing.of + " on the leaderboard."
+        ? "Your best result is number " + res.standing.rank + " of " + res.standing.of + " on the scoreboard."
         : (KG.preview ? "Preview mode: results are only kept in this browser." : "");
       $("done").hidden = false;
       $("btn-again").focus();

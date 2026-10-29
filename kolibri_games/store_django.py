@@ -54,7 +54,7 @@ class DjangoStore(Store):
         row.data = data
         row.save()
 
-    def lesson_saves(self, content_ids, facility_id, user_id=None):
+    def classroom_saves(self, content_ids, facility_id, user_id=None):
         """Kolibri keeps what an HTML5 app saves (SCORM, xAPI, localStorage) in
         ContentSummaryLog.extra_fields["contentState"]. Those logs sync between
         Kolibri servers, so scoreboards include learners who played elsewhere."""

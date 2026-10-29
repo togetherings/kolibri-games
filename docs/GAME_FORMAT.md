@@ -1,7 +1,7 @@
 # Making a game for Kolibri Games
 
-This page is about **Standalone Games**, which are played on the games page. For games that
-learners open from Learn (HTML5 apps with scoreboards), see [LESSON_GAMES.md](LESSON_GAMES.md).
+This page is about **Free-play Games**, which are played on the games page. For games that
+learners open from Learn (HTML5 apps with scoreboards), see [CLASSROOM_GAMES.md](CLASSROOM_GAMES.md).
 
 A game is a folder of ordinary web files plus a manifest:
 
@@ -68,17 +68,18 @@ Kolibri Studio channel or copy into a device's games folder.
 | `version` | yes | Your game's version, like `1.0.0`. |
 | `title` | yes | Name shown to learners. Keep it short (30 characters fits everywhere). |
 | `description` | no | One sentence for the games page. |
+| `type` | no | `"free-play"` (the default). Classroom Games use `"classroom"`; see [CLASSROOM_GAMES.md](CLASSROOM_GAMES.md). |
 | `entry` | no | Start page, default `index.html`. |
 | `language` | no | Two- or three-letter code, default `en`. |
 | `requires_platform` | no | Plugin versions the game works with, e.g. `>=0.1` or `>=0.2,<1`. Devices with an older plugin show "ask your administrator to update" instead of a broken game. |
 | `icon`, `color` | no | Icon file and accent colour for the games page. Without an icon, a coloured tile with the first letter is used. |
 | `validator` | no | Name of a server-side rule checker (see below). Without one, the game reports its own score and coaches see it as *unchecked*. |
-| `scoring` | no | Leave it out for games without scores (no leaderboard). `order` is `asc` when lower is better, `desc` when higher is better. `counts` is the default for which attempt counts on the leaderboard: `first` (later attempts are practice) or `best`; coaches can change it. `tiebreak` is `seconds` (faster wins ties) or `none`. `min`/`max` reject impossible scores. |
+| `scoring` | no | Leave it out for games without scores (no scoreboard). `order` is `asc` when lower is better, `desc` when higher is better. `counts` is the default for which attempt counts on the scoreboard: `first` (later attempts are practice) or `best`; coaches can change it. `tiebreak` is `seconds` (faster wins ties) or `none`. `min`/`max` reject impossible scores. |
 | `settings` | no | Options coaches can change. Types: `integer`, `number` (with optional `min`, `max`), `boolean`, `choice` (with `choices`), `text`. Each needs `key`, `label` and `default`. |
 | `data` | no | Large data the game needs from the device, by name, e.g. `[{"name": "wikipedia"}]`. Administrators map names to files in `data_sources.json`. Games that need missing data are shown as unavailable. |
 
 Every game also gets these coach settings from the platform: which attempt counts, what learners
-see on the leaderboard (names, initials only, or only their own result), and a time limit.
+see on the scoreboard (names, initials only, or only their own result), and a time limit.
 
 ## The SDK
 
@@ -110,7 +111,8 @@ const done = await KG.finish({ score: 12, detail: {} }); // end the attempt
 // done.attempt   {score, seconds, verified, practice}
 // done.standing  {rank, of, score} or null
 
-await KG.leaderboard();         // {rows: [{rank, name, score, seconds, me}], counts, visibility}
+await KG.scoreboard();          // {rows: [{rank, name, score, seconds, me}], counts, visibility}
+                               // (KG.leaderboard() does the same, for older games)
 await KG.myResults();           // {attempts: [...]}
 await KG.getState();            // saved data for this player, or null
 await KG.setState({ level: 3 }); // up to 64 KB of JSON

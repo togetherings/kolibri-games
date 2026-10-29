@@ -36,7 +36,7 @@ def first_attempt(attempts):
 
 
 def counted_attempt(attempts, scoring, counts):
-    """The attempt that represents this player on the leaderboard, or None."""
+    """The attempt that represents this player on the scoreboard, or None."""
     if counts == "first":
         first = first_attempt(attempts)
         return first if first is not None and _is_ranked(first) else None

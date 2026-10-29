@@ -12,7 +12,7 @@
  *   KolibriGames.event(type, data)      -> reply from the game's rule checker (or {})
  *   KolibriGames.finish({score, detail})-> {attempt, standing, counts}
  *   KolibriGames.abandon()
- *   KolibriGames.leaderboard()          -> {rows, visibility, counts}
+ *   KolibriGames.scoreboard()           -> {rows, visibility, counts}  (also called leaderboard())
  *   KolibriGames.myResults()            -> {attempts}
  *   KolibriGames.getState() / setState(data)   saved data for this player (max 64 KB)
  *   KolibriGames.call(method, params)   ask the game's rule checker something
@@ -185,6 +185,7 @@
       return request("attempt.finish", { score: result.score === undefined ? null : result.score, detail: result.detail || {} });
     },
     abandon: function () { return request("attempt.abandon"); },
+    scoreboard: function () { return request("leaderboard.get"); },
     leaderboard: function () { return request("leaderboard.get"); },
     myResults: function () { return request("results.mine"); },
     getState: function () { return request("state.get"); },

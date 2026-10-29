@@ -44,7 +44,7 @@ def card(service, game, player):
         data.update(game.manifest.to_public())
         if game.playable:
             data["summary"] = service.summary(game, player)
-    if game.is_lesson:
+    if game.is_classroom:
         data["resources"] = [r.public() for r in game.resources]
     return data
 

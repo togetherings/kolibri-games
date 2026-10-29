@@ -1,6 +1,6 @@
 """
 Kolibri Games: a platform for playing sandboxed games inside Kolibri, with
-Kolibri sign-ins, server-side scoring, leaderboards and coach tools.
+Kolibri sign-ins, server-side scoring, scoreboards and coach tools.
 
 Games are packaged as ZIM files (or plain folders during development) that
 contain a ``kolibri-game.json`` manifest.

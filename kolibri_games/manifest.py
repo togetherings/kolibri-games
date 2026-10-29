@@ -20,9 +20,9 @@ COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 SETTING_TYPES = ("integer", "number", "boolean", "choice", "text")
 
-#: "standalone": played on the games page. "lesson": an HTML5 app in a Kolibri
+#: "free-play": played on the games page. "classroom": an HTML5 app in a Kolibri
 #: channel, opened from Learn; the games page shows scoreboards from its saved data.
-GAME_TYPES = ("standalone", "lesson")
+GAME_TYPES = ("free-play", "classroom")
 SAVED_IN = ("scorm",)
 COMBINE = ("best", "sum", "max")
 MAX_FIELDS = 8
@@ -32,7 +32,7 @@ PLATFORM_SETTINGS = [
     {
         "key": "counts",
         "type": "choice",
-        "label": "Which attempt counts on the leaderboard",
+        "label": "Which attempt counts on the scoreboard",
         "choices": [
             {"value": "first", "label": "First attempt only (later attempts are practice)"},
             {"value": "best", "label": "Best attempt"},
@@ -42,7 +42,7 @@ PLATFORM_SETTINGS = [
     {
         "key": "leaderboard",
         "type": "choice",
-        "label": "What learners see on the leaderboard",
+        "label": "What learners see on the scoreboard",
         "choices": [
             {"value": "names", "label": "Full names"},
             {"value": "initials", "label": "Initials only"},
@@ -102,12 +102,12 @@ class Manifest(object):
         self.color = data.get("color", "#3b6e8f")
         self.authors = data.get("authors", [])
         self.license = data.get("license", "")
-        self.type = data.get("type", "standalone")
+        self.type = data.get("type", "free-play")
         self.scoreboards = data.get("scoreboards")
 
     @property
-    def is_lesson(self):
-        return self.type == "lesson"
+    def is_classroom(self):
+        return self.type == "classroom"
 
     @property
     def has_scores(self):
@@ -115,7 +115,7 @@ class Manifest(object):
 
     def platform_settings_schema(self):
         schema = [dict(s) for s in PLATFORM_SETTINGS]
-        if self.is_lesson:
+        if self.is_classroom:
             board = dict([f for f in schema if f["key"] == "leaderboard"][0])
             board["label"] = "What learners see on the scoreboards"
             return [board]
@@ -177,9 +177,9 @@ def _check_setting(field, i, problems):
 
 
 def _check_scoreboards(sb, problems):
-    """Checks the "scoreboards" section of a Lesson Game and returns it with defaults filled in."""
+    """Checks the "scoreboards" section of a Classroom Game and returns it with defaults filled in."""
     if not isinstance(sb, dict):
-        problems.append("Lesson Games need a scoreboards section that says how to read their saved data.")
+        problems.append("Classroom Games need a scoreboards section that says how to read their saved data.")
         return None
     where = "scoreboards"
     saved_in = sb.get("saved_in", "scorm")
@@ -308,17 +308,17 @@ def validate(data):
         problems.append("requires_platform must look like '>=0.1' or '>=0.1,<2'.")
     if "validator" in data and not (isinstance(data["validator"], str) and NAME_RE.match(data["validator"])):
         problems.append("validator must be a validator name like 'number-hunt'.")
-    gtype = data.get("type", "standalone")
+    gtype = data.get("type", "free-play")
     if gtype not in GAME_TYPES:
-        problems.append("type must be 'standalone' or 'lesson'.")
+        problems.append("type must be 'free-play' or 'classroom'.")
     scoreboards = None
-    if gtype == "lesson":
+    if gtype == "classroom":
         for name in ("validator", "scoring", "settings", "data"):
             if name in data:
-                problems.append("Lesson Games can't use '%s'. Their scores come from their saved data." % name)
+                problems.append("Classroom Games can't use '%s'. Their scores come from their saved data." % name)
         scoreboards = _check_scoreboards(data.get("scoreboards"), problems)
     elif "scoreboards" in data:
-        problems.append("scoreboards is only for Lesson Games (type 'lesson').")
+        problems.append("scoreboards is only for Classroom Games (type 'classroom').")
 
     scoring = data.get("scoring")
     if scoring is not None:

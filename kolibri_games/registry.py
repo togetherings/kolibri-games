@@ -1,19 +1,19 @@
 """
 Finds games on this device:
 
-* Standalone Games: ZIM resources in Kolibri channels that contain a
+* Free-play Games: ZIM resources in Kolibri channels that contain a
   ``kolibri-game.json`` (normal ZIMs, like Wikipedia, are ignored)
-* Standalone Games placed in the local games folders
+* Free-play Games placed in the local games folders
   (``$KOLIBRI_HOME/kolibri_games/games`` and any folders in
   ``KOLIBRI_GAMES_PATH``), either as .zim files or as plain folders, which is
   handy while making a game
-* Lesson Games: HTML5 app resources (.zip) in Kolibri channels that contain a
-  ``kolibri-game.json`` with ``"type": "lesson"``. Every resource with the same
+* Classroom Games: HTML5 app resources (.zip) in Kolibri channels that contain a
+  ``kolibri-game.json`` with ``"type": "classroom"``. Every resource with the same
   manifest id is one game. Other HTML5 apps are left alone.
 
 Each game gets a stable *key* used in URLs and in the database:
 ``c-<content_id>`` for channel games, ``l-<manifest id>`` for local games and
-``g-<manifest id>`` for Lesson Games.
+``g-<manifest id>`` for Classroom Games.
 """
 import json
 import logging
@@ -23,7 +23,7 @@ import threading
 import time
 
 from . import __version__
-from . import lessons
+from . import classroom
 from . import validators
 from .manifest import ManifestError
 from .sources import FolderSource, SourceError, ZimSource, ZipSource
@@ -82,9 +82,9 @@ def data_sources():
 
 
 class GameEntry(object):
-    """A Standalone Game, or a file that looks like a game but can't be used."""
+    """A Free-play Game, or a file that looks like a game but can't be used."""
 
-    is_lesson = False
+    is_classroom = False
 
     def __init__(self, key, source, origin, manifest=None, problems=None, content=None):
         self.key = key
@@ -127,9 +127,9 @@ class GameEntry(object):
 def check(manifest, source):
     """Reasons this device can't run the game (empty list = playable)."""
     problems = []
-    if manifest.is_lesson:
+    if manifest.is_classroom:
         return [
-            "This is a Lesson Game. Lesson Games are HTML5 apps: add its .zip to a channel "
+            "This is a Classroom Game. Classroom Games are HTML5 apps: add its .zip to a channel "
             "(for example with Kolibri Studio) so learners open it from Learn."
         ]
     if manifest.requires_platform and not satisfies(__version__, manifest.requires_platform):
@@ -209,8 +209,8 @@ def _channel_files(extension, kind=None, preset=None):
     return found
 
 
-#: Lesson Game resources added by the preview server: [(source, content dict)].
-PREVIEW_LESSONS = []
+#: Classroom Game resources added by the preview server: [(source, content dict)].
+PREVIEW_CLASSROOM = []
 
 # file id (a checksum, so the file never changes) -> (manifest or None, problems)
 _zip_cache = {}
@@ -236,11 +236,11 @@ def _zip_manifest(path, file_id):
     return result
 
 
-def _lesson_games():
-    """(Lesson Games, entries for broken ones)."""
+def _classroom_games():
+    """(Classroom Games, entries for broken ones)."""
     resources, broken = [], []
     found = [(ZipSource(p), c, fid) for p, c, fid in _channel_files("zip", kind="html5", preset="html5_zip")]
-    found += [(s, c, None) for s, c in PREVIEW_LESSONS]
+    found += [(s, c, None) for s, c in PREVIEW_CLASSROOM]
     for source, content, file_id in found:
         if file_id is not None:
             manifest, problems = _zip_manifest(source.location, file_id)
@@ -254,17 +254,17 @@ def _lesson_games():
         if manifest is None:
             broken.append(GameEntry("c-" + content["content_id"], source, "channel", None,
                                     ["Invalid game: %s" % p for p in problems], content))
-        elif not manifest.is_lesson:
+        elif not manifest.is_classroom:
             broken.append(GameEntry("c-" + content["content_id"], source, "channel", None,
-                                    ["This HTML5 app has a kolibri-game.json for a Standalone Game. "
-                                     "Standalone Games are packed as .zim files (see kolibri-games-pack)."], content))
+                                    ["This HTML5 app has a kolibri-game.json for a Free-play Game. "
+                                     "Free-play Games are packed as .zim files (see kolibri-games-pack)."], content))
         elif manifest.requires_platform and not satisfies(__version__, manifest.requires_platform):
             broken.append(GameEntry("c-" + content["content_id"], source, "channel", None,
                                     ["This game needs Kolibri Games %s, but this device has %s."
                                      % (manifest.requires_platform, __version__)], content))
         else:
-            resources.append(lessons.LessonResource(source, manifest, content))
-    return lessons.group_resources(resources), broken
+            resources.append(classroom.ClassroomResource(source, manifest, content))
+    return classroom.group_resources(resources), broken
 
 
 def _channel_games():
@@ -286,8 +286,8 @@ def discover(refresh=False):
         if not refresh and _cache["games"] is not None and time.time() - _cache["at"] < CACHE_SECONDS:
             return _cache["games"]
         games, seen = [], {}
-        lesson_games, broken = _lesson_games()
-        for entry in _channel_games() + _local_games() + lesson_games + broken:
+        classroom_games, broken = _classroom_games()
+        for entry in _channel_games() + _local_games() + classroom_games + broken:
             if entry.key in seen:
                 seen[entry.key].problems.append(
                     "Another copy of this game was also found at %s and ignored." % entry.source.location

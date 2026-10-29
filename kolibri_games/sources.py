@@ -1,7 +1,7 @@
 """
-Where a game's files come from: a ZIM file (how Standalone Games are
+Where a game's files come from: a ZIM file (how Free-play Games are
 distributed, e.g. through a Kolibri channel), a zip file (a Kolibri HTML5 app,
-which is how Lesson Games are distributed) or a plain folder (handy while
+which is how Classroom Games are distributed) or a plain folder (handy while
 making a game).
 """
 import mimetypes

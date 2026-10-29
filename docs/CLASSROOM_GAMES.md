@@ -1,14 +1,14 @@
-# Lesson Games
+# Classroom Games
 
 Kolibri Games has two kinds of game:
 
-- **Standalone Games** are played on the games page. They're packed as `.zim` files (see
+- **Free-play Games** are played on the games page. They're packed as `.zim` files (see
   [GAME_FORMAT.md](GAME_FORMAT.md)).
-- **Lesson Games** are ordinary Kolibri HTML5 apps (`.zip`) in a channel. Learners open them from
+- **Classroom Games** are ordinary Kolibri HTML5 apps (`.zip`) in a channel. Learners open them from
   Learn, and coaches can put them in lessons and assign them to classes, like any other resource.
   The games page shows **scoreboards** made from the scores the game saves.
 
-This page is about Lesson Games.
+This page is about Classroom Games.
 
 ## How it works
 
@@ -17,7 +17,7 @@ app saves in `cmi.suspend_data` on the server, in the learner's record for that 
 Games reads that saved data. It doesn't change it, and the game doesn't need to know about Kolibri
 Games at all.
 
-To make an HTML5 app a Lesson Game, add a `kolibri-game.json` file next to its `index.html`,
+To make an HTML5 app a Classroom Game, add a `kolibri-game.json` file next to its `index.html`,
 before you upload the zip to Kolibri Studio. The file says which game the app belongs to and how
 to read scores out of its saved data. HTML5 apps without this file are left alone.
 
@@ -53,7 +53,7 @@ Example for Lessons In Typing (one lesson per resource, the board is named after
 ```json
 {
   "format": 1,
-  "type": "lesson",
+  "type": "classroom",
   "id": "org.togetherings.lit",
   "version": "0.21.0",
   "title": "Lessons In Typing",
@@ -78,7 +78,7 @@ Example for Studies In Geography (several maps and modes per resource, values in
 ```json
 {
   "format": 1,
-  "type": "lesson",
+  "type": "classroom",
   "id": "org.togetherings.singe",
   "version": "0.24.0",
   "title": "Studies In Geography",
@@ -100,21 +100,21 @@ Example for Studies In Geography (several maps and modes per resource, values in
 }
 ```
 
-Both files are in [examples/lesson-games](../examples/lesson-games).
+Both files are in [examples/classroom-games](../examples/classroom-games).
 
 ### Fields
 
 | Field | Meaning |
 |---|---|
 | `format` | Always `1`. |
-| `type` | `"lesson"`. |
+| `type` | `"classroom"`. |
 | `id` | The game's id, shared by every resource of the game. Never change it. |
 | `version` | Like `1.2.0`. When resources have different versions, the newest manifest is used for the title, description and scoreboard layout. Board names from every version are kept. |
 | `title`, `description`, `color`, `icon` | Shown on the games page. `icon` is a path inside the zip. |
 | `requires_platform` | Optional, like `">=0.1.1"`. |
 | `scoreboards` | How to read the saved data, below. |
 
-Lesson Games can't use `validator`, `scoring`, `settings` or `data`: those are for Standalone
+Classroom Games can't use `validator`, `scoring`, `settings` or `data`: those are for Standalone
 Games.
 
 ### `scoreboards`
@@ -160,10 +160,10 @@ another Kolibri server that syncs with this one.
 
 ## Trying it without Kolibri
 
-The preview server can pretend that learners played Lesson Games in Learn:
+The preview server can pretend that learners played Classroom Games in Learn:
 
 ```
-kolibri-games-preview games --lessons examples/lesson-games/preview.json
+kolibri-games-preview games --classroom examples/classroom-games/preview.json
 ```
 
 `preview.json` lists resources (a folder or zip with a `kolibri-game.json`, plus a pretend
