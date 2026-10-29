@@ -327,4 +327,6 @@ print()
 if FAILURES:
     print("%d check(s) failed" % len(FAILURES))
     sys.exit(1)
+tested = "with Wiki BLAZE" if os.environ.get("KOLIBRI_GAMES_TEST_WIKI") else "WITHOUT Wiki BLAZE"
+print("::notice title=Integration test::SMOKE OK %s" % tested)
 print("SMOKE OK")

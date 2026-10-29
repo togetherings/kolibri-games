@@ -24,6 +24,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install pytest -e ".[wikipedia]"
       - run: tools/ci_run.sh "Unit tests" python -m pytest -q
+      - name: The Wikipedia ZIM test ran (needs libzim)
+        run: python -m pytest -q tests/test_zim.py | tail -1 | tee zim.txt && grep -q "1 passed" zim.txt && echo "::notice title=ZIM test::$(cat zim.txt)"
       - name: Package the games
         run: kolibri-games-pack games/* --out-dir dist/games && ls -l dist/games
 
