@@ -13,7 +13,6 @@
 - The games page shows Free-play Games first, then Classroom Games.
 - "Leaderboard" is now called "scoreboard" everywhere, inside the plugin too. Games built for
   0.1.0 need one change: call `KolibriGames.scoreboard()` instead of `KolibriGames.leaderboard()`.
-  Coaches' scoreboard settings carry over.
 - A **Games** link in Kolibri's side menu.
 - Signing in from the games page now brings you back to the game you opened.
 - The preview server can pretend Classroom Games were played (`--classroom`).

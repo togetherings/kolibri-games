@@ -185,25 +185,6 @@ if zim:
 else:
     print("skip channel discovery test (KOLIBRI_GAMES_TEST_ZIM not set)")
 
-# --------------------------------------- settings saved by 0.1.0 carry over
-
-try:
-    import importlib
-
-    from django.apps import apps as django_apps
-    from kolibri_games.models import GameSettings
-
-    rename = importlib.import_module("kolibri_games.migrations.0002_rename_leaderboard_setting")
-    old = GameSettings.objects.create(game_key="l-org.example.old", facility_id=facility.id,
-                                      platform_json=json.dumps({"leaderboard": "hidden", "counts": "best"}))
-    rename.forwards(django_apps, None)
-    old.refresh_from_db()
-    check(json.loads(old.platform_json) == {"scoreboard": "hidden", "counts": "best"},
-          "a coach's 0.1.0 leaderboard setting becomes the scoreboard setting: %s" % old.platform_json)
-    old.delete()
-except Exception as e:  # noqa: BLE001
-    check(False, "settings migration test crashed: %r" % e)
-
 # ------------------------------------------------------------ Classroom Games
 
 try:
