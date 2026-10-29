@@ -12,7 +12,7 @@
  *   KolibriGames.event(type, data)      -> reply from the game's rule checker (or {})
  *   KolibriGames.finish({score, detail})-> {attempt, standing, counts}
  *   KolibriGames.abandon()
- *   KolibriGames.scoreboard()           -> {rows, visibility, counts}  (also called leaderboard())
+ *   KolibriGames.scoreboard()           -> {rows, visibility, counts}
  *   KolibriGames.myResults()            -> {attempts}
  *   KolibriGames.getState() / setState(data)   saved data for this player (max 64 KB)
  *   KolibriGames.call(method, params)   ask the game's rule checker something
@@ -119,7 +119,7 @@
             player: { name: "Preview player", role: "learner" },
             platform: { version: "preview", api: API },
             settings: settingsOf(m),
-            rules: { counts: (m.scoring && m.scoring.counts) || "first", leaderboard: "names", time_limit: null },
+            rules: { counts: (m.scoring && m.scoring.counts) || "first", scoreboard: "names", time_limit: null },
             summary: { attempts: results.length, counted: null, counts: "best", first_used: results.length > 0 },
             preview: true
           };
@@ -150,7 +150,7 @@
         });
       },
       "attempt.abandon": function () { attempt = null; return Promise.resolve({ ok: true }); },
-      "leaderboard.get": function () { return Promise.resolve({ rows: [], visibility: "names", counts: "best" }); },
+      "scoreboard.get": function () { return Promise.resolve({ rows: [], visibility: "names", counts: "best" }); },
       "results.mine": function () {
         return getManifest().then(function (m) {
           return { attempts: load(m.id + ":results", []).map(function (r, i) {
@@ -185,8 +185,7 @@
       return request("attempt.finish", { score: result.score === undefined ? null : result.score, detail: result.detail || {} });
     },
     abandon: function () { return request("attempt.abandon"); },
-    scoreboard: function () { return request("leaderboard.get"); },
-    leaderboard: function () { return request("leaderboard.get"); },
+    scoreboard: function () { return request("scoreboard.get"); },
     myResults: function () { return request("results.mine"); },
     getState: function () { return request("state.get"); },
     setState: function (data) { return request("state.set", { data: data }); },

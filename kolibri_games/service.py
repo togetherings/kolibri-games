@@ -329,17 +329,17 @@ class GameService(object):
 
     # ---------------------------------------------------------- results
 
-    def leaderboard(self, game, viewer, limit=20, user_ids=None):
+    def scoreboard(self, game, viewer, limit=20, user_ids=None):
         scoring = game.manifest.scoring
         if scoring is None:
             return {"rows": [], "visibility": "names", "counts": None}
         platform_settings, _ = self.settings(game, viewer.facility_id)
         counts = platform_settings.get("counts", "first")
-        visibility = "names" if viewer.is_coach else platform_settings.get("leaderboard", "names")
+        visibility = "names" if viewer.is_coach else platform_settings.get("scoreboard", "names")
         attempts = self.store.attempts(game.key, viewer.facility_id)
         if user_ids is not None:
             attempts = [a for a in attempts if a.user_id in user_ids]
-        rows = ranking.leaderboard_rows(attempts, scoring, counts, viewer.id, visibility, limit)
+        rows = ranking.scoreboard_rows(attempts, scoring, counts, viewer.id, visibility, limit)
         return {"rows": rows, "visibility": visibility, "counts": counts}
 
     def summary(self, game, player):
@@ -364,7 +364,7 @@ class GameService(object):
         if not game.manifest.is_classroom:
             raise PlatformError("This game has no scoreboards.", "not_classroom", 404)
         platform_settings, _ = self.settings(game, viewer.facility_id)
-        visibility = "names" if viewer.is_coach else platform_settings.get("leaderboard", "names")
+        visibility = "names" if viewer.is_coach else platform_settings.get("scoreboard", "names")
         saves = self.store.classroom_saves(game.content_ids, viewer.facility_id)
         if user_ids is not None:
             saves = [s for s in saves if s["user_id"] in user_ids]

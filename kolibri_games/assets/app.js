@@ -444,7 +444,7 @@
       play.timeChip.hidden = true;
       return api(gameApi(play, "/attempts/" + id + "/abandon"), { body: {} });
     },
-    "leaderboard.get": function (play) { return api(gameApi(play, "/leaderboard")); },
+    "scoreboard.get": function (play) { return api(gameApi(play, "/scoreboard")); },
     "results.mine": function (play) { return api(gameApi(play, "/mine")); },
     "state.get": function (play) { return api(gameApi(play, "/state")).then(function (d) { return d.data; }); },
     "state.set": function (play, params) { return api(gameApi(play, "/state"), { body: { data: params.data } }); },
@@ -493,7 +493,7 @@
     findGame(key).then(function (g) {
       var q = classId ? "?class=" + encodeURIComponent(classId) : "";
       return Promise.all([
-        api("api/games/" + encodeURIComponent(key) + "/leaderboard" + q),
+        api("api/games/" + encodeURIComponent(key) + "/scoreboard" + q),
         S.me.role !== "learner" ? classPicker(classId, function (v) { renderBoard(key, v); }, true) : null
       ]).then(function (res) {
         var data = res[0], picker = res[1];

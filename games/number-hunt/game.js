@@ -120,7 +120,7 @@
       if (standing) note += "You're number " + standing.rank + " of " + standing.of + " on the scoreboard.";
       $("done-standing").textContent = note;
       show("done");
-      return KG.leaderboard().then(drawBoard);
+      return KG.scoreboard().then(drawBoard);
     }).catch(function (err) {
       $("done-title").textContent = "Couldn't save your result";
       $("done-summary").textContent = err.message;

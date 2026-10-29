@@ -120,8 +120,8 @@ other = Client()
 other.force_login(ben)
 status, _ = jpost(other, base + "api/games/%s/attempts/%d/events" % (NH, aid), {"type": "guess", "data": {"value": 3}})
 check(status in (404, 409), "another learner can't touch this attempt")
-status, board = jget(other, base + "api/games/%s/leaderboard" % NH)
-check(status == 200 and board["rows"][0]["name"] == "Amina Test", "leaderboard shows the result")
+status, board = jget(other, base + "api/games/%s/scoreboard" % NH)
+check(status == 200 and board["rows"][0]["name"] == "Amina Test", "scoreboard shows the result")
 
 status, mm = jpost(other, base + "api/games/%s/attempts" % MM, {"resume": False})
 status, fin = jpost(other, base + "api/games/%s/attempts/%d/finish" % (MM, mm["attempt"]["id"]), {"score": 9, "detail": {"pairs": 8}})
@@ -146,11 +146,11 @@ names = [row["name"] for row in res["rows"]]
 check(status == 200 and "Amina Test" in names and "Ben Test" in names, "class results include every member: %s" % names)
 r = c.get(base + "api/games/%s/results?format=csv" % NH)
 check(r.status_code == 200 and b"Amina Test" in r.content, "CSV export works")
-status, s = jpost(c, base + "api/games/%s/settings" % NH, {"platform": {"leaderboard": "initials"}, "game": {"max": 20}})
+status, s = jpost(c, base + "api/games/%s/settings" % NH, {"platform": {"scoreboard": "initials"}, "game": {"max": 20}})
 check(status == 200 and s["values"]["game"]["max"] == 20, "coach saved settings")
 status, bad = jpost(c, base + "api/games/%s/settings" % NH, {"platform": {"time_limit": -1}, "game": {}})
 check(status == 400 and "time_limit" in bad.get("fields", {}), "invalid settings rejected with field errors")
-status, board = jget(other, base + "api/games/%s/leaderboard" % NH)
+status, board = jget(other, base + "api/games/%s/scoreboard" % NH)
 check(board["rows"][0]["name"] == "A.T.", "learners now see initials")
 status, _ = jpost(c, base + "api/games/%s/results/%s/reset" % (NH, amina.id))
 status, again = jpost(learner, base + "api/games/%s/attempts" % NH)
@@ -184,6 +184,25 @@ if zim:
         check(False, "channel discovery test crashed: %r" % e)
 else:
     print("skip channel discovery test (KOLIBRI_GAMES_TEST_ZIM not set)")
+
+# --------------------------------------- settings saved by 0.1.0 carry over
+
+try:
+    import importlib
+
+    from django.apps import apps as django_apps
+    from kolibri_games.models import GameSettings
+
+    rename = importlib.import_module("kolibri_games.migrations.0002_rename_leaderboard_setting")
+    old = GameSettings.objects.create(game_key="l-org.example.old", facility_id=facility.id,
+                                      platform_json=json.dumps({"leaderboard": "hidden", "counts": "best"}))
+    rename.forwards(django_apps, None)
+    old.refresh_from_db()
+    check(json.loads(old.platform_json) == {"scoreboard": "hidden", "counts": "best"},
+          "a coach's 0.1.0 leaderboard setting becomes the scoreboard setting: %s" % old.platform_json)
+    old.delete()
+except Exception as e:  # noqa: BLE001
+    check(False, "settings migration test crashed: %r" % e)
 
 # ------------------------------------------------------------ Classroom Games
 
@@ -243,7 +262,7 @@ try:
     check(board.get("name") in ("Lesson 1: Left-hand home keys", "Lesson 1 again"), "board named after its resource")
     status, _ = jget(learner, base + "api/games/%s" % LIT_KEY)
     check(status == 409, "Classroom Games can't be opened on the games page (%s)" % status)
-    status, s = jpost(c, base + "api/games/%s/settings" % LIT_KEY, {"platform": {"leaderboard": "initials"}})
+    status, s = jpost(c, base + "api/games/%s/settings" % LIT_KEY, {"platform": {"scoreboard": "initials"}})
     check(status == 200, "coach changed the Classroom Game's scoreboard setting")
     status, scores = jget(other, base + "api/games/%s/scoreboards" % LIT_KEY)
     check([r["name"] for r in scores["boards"][0]["rows"]] == ["A.T.", "Ben Test"], "learners now see initials")

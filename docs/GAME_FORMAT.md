@@ -97,7 +97,7 @@ const KG = window.KolibriGames;
 const info = await KG.ready();
 // info.player   {name, role: "learner" | "coach" | "admin"}
 // info.settings the coach's settings for your game (defaults filled in)
-// info.rules    {counts: "first"|"best", leaderboard, time_limit: seconds or null}
+// info.rules    {counts: "first"|"best", scoreboard, time_limit: seconds or null}
 // info.summary  {attempts, counted, first_used, counts}
 // info.preview  true when opened outside Kolibri Games
 
@@ -112,7 +112,6 @@ const done = await KG.finish({ score: 12, detail: {} }); // end the attempt
 // done.standing  {rank, of, score} or null
 
 await KG.scoreboard();          // {rows: [{rank, name, score, seconds, me}], counts, visibility}
-                               // (KG.leaderboard() does the same, for older games)
 await KG.myResults();           // {attempts: [...]}
 await KG.getState();            // saved data for this player, or null
 await KG.setState({ level: 3 }); // up to 64 KB of JSON

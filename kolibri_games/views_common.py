@@ -59,7 +59,7 @@ def session(service, game, player):
         "settings": game_settings,
         "rules": {
             "counts": platform_settings.get("counts"),
-            "leaderboard": platform_settings.get("leaderboard"),
+            "scoreboard": platform_settings.get("scoreboard"),
             "time_limit": (platform_settings.get("time_limit") or 0) * 60 or None,
         },
         "summary": service.summary(game, player),

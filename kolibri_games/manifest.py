@@ -40,7 +40,7 @@ PLATFORM_SETTINGS = [
         "default": None,  # filled in from the manifest's scoring.counts
     },
     {
-        "key": "leaderboard",
+        "key": "scoreboard",
         "type": "choice",
         "label": "What learners see on the scoreboard",
         "choices": [
@@ -116,7 +116,7 @@ class Manifest(object):
     def platform_settings_schema(self):
         schema = [dict(s) for s in PLATFORM_SETTINGS]
         if self.is_classroom:
-            board = dict([f for f in schema if f["key"] == "leaderboard"][0])
+            board = dict([f for f in schema if f["key"] == "scoreboard"][0])
             board["label"] = "What learners see on the scoreboards"
             return [board]
         for field in schema:

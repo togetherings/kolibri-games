@@ -248,10 +248,10 @@ class Handler(BaseHTTPRequestHandler):
         if rest == ["call"] and method == "POST":
             data = self.body()
             return self.json(200, service.call(self.game(key), player, data.get("method"), data.get("params")))
-        if rest == ["leaderboard"]:
+        if rest == ["scoreboard"]:
             users = self.class_users(query.get("class")) if player.is_coach else None
             ids = {u for u, _ in users} if users else None
-            return self.json(200, service.leaderboard(self.game(key, playable=False), player, user_ids=ids))
+            return self.json(200, service.scoreboard(self.game(key, playable=False), player, user_ids=ids))
         if rest == ["scoreboards"]:
             users = self.class_users(query.get("class")) if player.is_coach else None
             ids = {u for u, _ in users} if users else None

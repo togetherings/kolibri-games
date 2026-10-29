@@ -44,7 +44,7 @@ def test_example_manifests_are_valid_classroom_games():
     for name in ("lit", "singe"):
         m = example(name)
         assert m.is_classroom and m.scoreboards["rank_by"]
-        assert [f["key"] for f in m.platform_settings_schema()] == ["leaderboard"]
+        assert [f["key"] for f in m.platform_settings_schema()] == ["scoreboard"]
         assert m.platform_settings_schema()[0]["default"] == "names"
 
 
@@ -159,9 +159,9 @@ def test_visibility_setting_applies_to_learners_but_not_coaches():
     save(store, BEN, "4" * 32, {"us": [90, 100, 1]})
     rows = service.scoreboards(game, AMINA)["boards"][0]["rows"]
     assert [r["name"] for r in rows] == ["Ben Learner", "Amina Learner"]  # full names by default
-    service.save_settings(game, FACILITY, {"leaderboard": "initials"}, {}, COACH.id)
+    service.save_settings(game, FACILITY, {"scoreboard": "initials"}, {}, COACH.id)
     assert [r["name"] for r in service.scoreboards(game, AMINA)["boards"][0]["rows"]] == ["B.L.", "Amina Learner"]
-    service.save_settings(game, FACILITY, {"leaderboard": "hidden"}, {}, COACH.id)
+    service.save_settings(game, FACILITY, {"scoreboard": "hidden"}, {}, COACH.id)
     rows = service.scoreboards(game, AMINA)["boards"][0]["rows"]
     assert [(r["rank"], r["name"]) for r in rows] == [(2, "Amina Learner")]
     assert len(service.scoreboards(game, COACH)["boards"][0]["rows"]) == 2

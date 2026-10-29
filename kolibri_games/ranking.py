@@ -83,7 +83,7 @@ def initials(name):
     return "".join(p[0].upper() + "." for p in parts[:3])
 
 
-def leaderboard_rows(attempts, scoring, counts, me_id=None, visibility="names", limit=20):
+def scoreboard_rows(attempts, scoring, counts, me_id=None, visibility="names", limit=20):
     """Rows for display. With visibility 'hidden' only the viewer's own row is returned."""
     rows = []
     for rank, a in ranked(attempts, scoring, counts):

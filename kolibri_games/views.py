@@ -282,14 +282,14 @@ def call(request, player, key):
 
 @require_GET
 @api
-def leaderboard(request, player, key):
+def scoreboard(request, player, key):
     game = _game(key, playable=False)
     user_ids = None
     class_id = request.GET.get("class")
     if class_id and player.is_coach:
         users = _users_in_scope(player, coach_class_scope(request.user, player), class_id)
         user_ids = {u for u, _ in users}
-    return JsonResponse(service.leaderboard(game, player, limit=50 if player.is_coach else 20, user_ids=user_ids))
+    return JsonResponse(service.scoreboard(game, player, limit=50 if player.is_coach else 20, user_ids=user_ids))
 
 
 @require_GET
