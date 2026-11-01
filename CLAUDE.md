@@ -1,7 +1,7 @@
 # Notes for working on this repository
 
 - Python package: `kolibri_games/`. Kolibri plugin name: `kolibri_games`.
-- Keep `service.py`, `ranking.py`, `classroom.py`, `wiki.py`, `wikirace.py`, `install.py`, `manifest.py`,
+- Keep `service.py`, `ranking.py`, `classroom.py`, `wiki.py`, `wikirace.py`, `photos.py`, `photoguess.py`, `install.py`, `manifest.py`,
   `registry.py`, `sources.py`, `views_common.py` free of Django imports; Django code lives in `models.py`, `store_django.py`,
   `views.py`, `urls.py`, `management/`.
 - `devserver.py` mirrors the API in `views.py` with the memory store. Change both together.
@@ -13,3 +13,5 @@
   Releases are published by a person in GitHub's Releases page (tag `vX.Y.Z`); the Release
   workflow then builds and attaches the files. Claude sessions can't create tags or releases.
 - Writing style for anything users see: plain words, sentence case, active voice.
+- BeaconHunt (github.com/togetherings/beacon-hunt) uses the photo-guess service; the photo-pack
+  format in docs/PHOTO_PACKS.md is shared with its pack tool, so change both together.

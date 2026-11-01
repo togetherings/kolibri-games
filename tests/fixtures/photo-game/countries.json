@@ -1,0 +1,8 @@
+{
+  "SLE": {"name": "Sierra Leone", "lat": 8.56, "lon": -11.79, "sub": "Western Africa"},
+  "LBR": {"name": "Liberia", "lat": 6.45, "lon": -9.43, "sub": "Western Africa"},
+  "GIN": {"name": "Guinea", "lat": 10.44, "lon": -10.94, "sub": "Western Africa"},
+  "GHA": {"name": "Ghana", "lat": 7.95, "lon": -1.03, "sub": "Western Africa"},
+  "CIV": {"name": "Côte d'Ivoire", "lat": 7.63, "lon": -5.55, "sub": "Western Africa"},
+  "FRA": {"name": "France", "lat": 46.6, "lon": 2.4, "sub": "Western Europe"}
+}

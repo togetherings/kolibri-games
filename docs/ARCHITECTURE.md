@@ -99,16 +99,23 @@ titles, matches article lists against the file, makes random pairs with a short 
 works out shortest routes with a limited breadth-first search in a background thread.
 `wikirace.py` holds the rules. See [WIKI_BLAZE.md](WIKI_BLAZE.md).
 
+## Photo guessing
+
+`photos.py` reads photo packs (folders or zips of street photos with their locations; see
+[PHOTO_PACKS.md](PHOTO_PACKS.md)) and removes hidden GPS data from JPEGs. `photoguess.py` holds the
+rules: it picks places spread over countries, serves one round's photo at a time under the game's
+`__photos__/<attempt>/<round>` address, and scores country guesses by distance. The places stay on
+the server.
+
 ## Shared code
 
-`service.py`, `ranking.py`, `classroom.py`, `wiki.py`, `wikirace.py`, `install.py`, `manifest.py`,
-`registry.py`, `sources.py` and `views_common.py` don't import Django, so the same rules run in
+`service.py`, `ranking.py`, `classroom.py`, `wiki.py`, `wikirace.py`, `photos.py`, `photoguess.py`,
+`install.py`, `manifest.py`, `registry.py`, `sources.py` and `views_common.py` don't import Django, so the same rules run in
 Kolibri (`store_django.py` + `views.py`), in the unit tests and in the preview server
 (`devserver.py`, memory store).
 
 ## Not done yet (next steps)
 
-- **GeoGuessr-style game** using offline maps and photos as a data source.
 - **An online list of games** for devices with internet, to install from without downloading
   zips by hand.
 - **Translations** of the games page and Kolibri menu label.

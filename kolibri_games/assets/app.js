@@ -881,7 +881,7 @@
       return { node: el("div", { class: "field check" }, [input, el("label", { for: id, text: field.label }), err]), input: input, field: field, err: err,
         read: function () { return input.checked; } };
     }
-    if (field.type === "choice" || field.type === "article_list") {
+    if (field.type === "choice" || field.type === "article_list" || field.type === "photo_region") {
       input = el("select", { id: id });
       (field.choices || []).forEach(function (c, i) {
         input.appendChild(el("option", { value: String(i), text: c.label }));
@@ -1274,6 +1274,7 @@
     var parts = [pageHead([["Games", "#/"]], "Setup", "Install games, choose the Wikipedia file, and see anything that stops a game from working."), clockNotice()];
     if (data.can_install) parts.push(installPanel(data));
     parts.push(wikipediaPanel(data));
+    if (data.photo_packs) parts.push(photoPacksPanel(data));
 
     var rows = el("tbody");
     data.games.forEach(function (g) {
@@ -1346,6 +1347,42 @@
       ]),
       el("div", { class: "row" }, [btn]),
       result
+    ]);
+    return el("section", { class: "panel setup-panel" }, [form]);
+  }
+
+  // Photo packs for BeaconHunt: a folder of region packs, copied onto the device.
+  function photoPacksPanel(data) {
+    var info = data.photo_packs;
+    var folder = el("input", { id: "packs-folder", type: "text", value: info.folder });
+    var btn = el("button", { type: "submit", text: "Use this folder", disabled: !data.can_install });
+    var list = info.packs.length
+      ? el("ul", { class: "packs" }, info.packs.map(function (p) {
+          return el("li", {}, [el("b", { text: p.title }), " · " + plural(p.places, "place") + " in " + plural(p.countries.length, "country") +
+            (p.version ? " · version " + p.version : "")]);
+        }))
+      : el("p", { class: "help", text: info.exists
+          ? "No photo packs found in this folder yet."
+          : "This folder doesn't exist yet. Make it and copy photo packs into it." });
+    var form = el("form", {
+      onsubmit: function (e) {
+        e.preventDefault();
+        btn.disabled = true;
+        api("api/data-sources", { body: { name: "photo-packs", path: folder.value.trim() } }).then(function () {
+          toast("Photo packs folder saved.");
+          S.games = null;
+          renderStatus();
+        }).catch(function (err) { toast(err.message); btn.disabled = false; });
+      }
+    }, [
+      el("div", { class: "field" }, [
+        el("label", { for: "packs-folder", text: "Photo packs for BeaconHunt" }),
+        el("div", { class: "help", text: "Copy photo packs (one folder or .zip per region, made with BeaconHunt's pack tool) into this folder." }),
+        list,
+        (info.problems || []).length ? el("ul", { class: "problems" }, info.problems.map(function (p) { return el("li", { text: p }); })) : null,
+        folder
+      ]),
+      el("div", { class: "row" }, [btn])
     ]);
     return el("section", { class: "panel setup-panel" }, [form]);
   }

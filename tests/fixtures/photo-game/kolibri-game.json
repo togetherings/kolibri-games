@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "type": "free-play",
+  "id": "org.example.photo-test",
+  "version": "1.0.0",
+  "title": "Photo test",
+  "description": "A bare game for testing the photo-guess service. The real game is BeaconHunt.",
+  "requires_platform": ">=0.2",
+  "service": "photo-guess",
+  "data": [{"name": "photo-packs"}],
+  "photos": {"countries": "countries.json"},
+  "scoring": {"label": "Points", "order": "desc", "counts": "best", "tiebreak": "seconds", "min": 0, "max": 100000},
+  "settings": [
+    {"key": "region", "type": "photo_region", "label": "Region", "default": "world"},
+    {"key": "rounds", "type": "integer", "label": "Rounds", "min": 1, "max": 10, "default": 3}
+  ]
+}

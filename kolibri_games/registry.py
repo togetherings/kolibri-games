@@ -26,6 +26,7 @@ import time
 
 from . import __version__
 from . import classroom
+from . import photos
 from .manifest import ManifestError
 from .sources import FolderSource, SourceError, ZipSource
 from .versions import satisfies
@@ -67,13 +68,20 @@ def local_game_dirs():
 
 # ------------------------------------------------------------- data sources
 #
-# Large data a game needs from the device, by name. For now that's only
-# "wikipedia": the path of a Wikipedia .zim file (or, for testing, a folder of
-# .html articles). Administrators choose it on the Setup page, which writes
-# data_sources.json; KOLIBRI_GAMES_DATA_<NAME> variables also work.
+# Large data a game needs from the device, by name:
+# * "wikipedia": the path of a Wikipedia .zim file (or, for testing, a folder of
+#   .html articles), for Wiki BLAZE
+# * "photo-packs": a folder of photo packs (see photos.py), for BeaconHunt. If
+#   it isn't set, <KOLIBRI_HOME>/kolibri_games/photo-packs is used.
+# Administrators choose them on the Setup page, which writes data_sources.json;
+# KOLIBRI_GAMES_DATA_<NAME> variables also work.
 
 #: Folders searched for .zim files to offer on the Setup page (IIAB keeps them in /library/zims/content).
 ZIM_FOLDERS = ["/library/zims/content", "/library/zims", "/opt/iiab/zims"]
+
+
+def default_photo_packs_dir():
+    return os.path.join(plugin_home(), "photo-packs")
 
 
 def data_sources_file():
@@ -93,6 +101,8 @@ def data_sources():
     for var, value in os.environ.items():
         if var.startswith("KOLIBRI_GAMES_DATA_") and value:
             found[var[len("KOLIBRI_GAMES_DATA_"):].lower().replace("_", "-")] = value
+    if "photo-packs" not in found:
+        found["photo-packs"] = default_photo_packs_dir()
     return found
 
 
@@ -114,6 +124,31 @@ def set_data_source(name, path):
         json.dump(current, f, indent=1)
     os.replace(tmp, data_sources_file())
     refresh()
+
+
+def check_data_source(name, path):
+    """Problem with a data source an administrator chose, or None. An empty path means 'forget it'."""
+    if name not in ("wikipedia", "photo-packs"):
+        return "Unknown data source."
+    if not path:
+        return None
+    if name == "wikipedia" and not ((os.path.isfile(path) and path.lower().endswith(".zim")) or os.path.isdir(path)):
+        return "There's no .zim file at %s." % path
+    if name == "photo-packs" and not os.path.isdir(path):
+        return "There's no folder at %s." % path
+    return None
+
+
+def photo_packs_status():
+    """The photo-packs folder, the packs in it and anything wrong, for the Setup page."""
+    folder = data_sources()["photo-packs"]
+    packs = photos.find_packs(folder)
+    return {
+        "folder": folder,
+        "exists": os.path.isdir(folder),
+        "packs": [p.describe() for p in sorted(packs.values(), key=lambda p: p.title.lower())],
+        "problems": photos.pack_problems(folder),
+    }
 
 
 def zim_candidates():
@@ -195,7 +230,15 @@ def check(manifest, source):
         )
     configured = data_sources()
     for d in manifest.data:
-        if d.get("required", True) and d["name"] not in configured:
+        if not d.get("required", True):
+            continue
+        if d["name"] == "photo-packs":
+            folder = configured["photo-packs"]
+            if not photos.find_packs(folder):
+                problems.append(
+                    "This game needs photo packs. Copy them into %s (or choose another folder on the Setup page)." % folder
+                )
+        elif d["name"] not in configured:
             problems.append(
                 "This game needs the '%s' data source. An administrator can choose it on the Setup page." % d["name"]
             )

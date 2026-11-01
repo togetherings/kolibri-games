@@ -8,6 +8,11 @@
   number of links in the final chain. Coaches see every step; after a challenge closes, everyone
   sees all routes and the shortest route. Comes with the SolarSpell Wikipedia for Schools list
   (about 10,500 articles), and coaches can make their own article lists.
+- **Photo guessing, for BeaconHunt:** a `photo-guess` service and photo packs (one per region of
+  the world, copied into the photo-packs folder and listed on the Setup page). The server picks
+  the photos, keeps where they were taken hidden until the learner guesses, removes GPS data from
+  the photos, and scores each country guess by distance. In a challenge, everyone gets the same
+  photos. See `docs/PHOTO_PACKS.md`.
 - **Challenges:** coaches set a game up for a class with its own settings, time limit and
   scoreboard. Coaches open and close a challenge with buttons, or at set times. Learners see their
   classes' challenges on the game card.

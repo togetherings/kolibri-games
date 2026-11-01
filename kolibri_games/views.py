@@ -26,12 +26,14 @@ from .service import FREE_PLAY, GameService, PlatformError, Player
 from .store_django import DjangoStore
 from .views_common import (
     ASSET_TYPES,
+    PHOTO_PREFIX,
     SDK_PATH,
     WIKI_PREFIX,
     card,
     csv_response_headers,
     game_file_headers,
     icon as icon_for,
+    photo_file,
     results_csv,
     scoreboards_csv,
     session,
@@ -247,6 +249,8 @@ def play_file(request, token, path=""):
             found = (f.read(), "text/javascript")
     elif path.startswith(WIKI_PREFIX):
         found = wiki_file(service, game, path[len(WIKI_PREFIX):])
+    elif path.startswith(PHOTO_PREFIX):
+        found = photo_file(service, game, claims.get("u"), path[len(PHOTO_PREFIX):])
     else:
         found = game.source.read(path or game.manifest.entry)
     if found is None:
@@ -518,6 +522,7 @@ def status(request, player):
         "data_sources": registry.data_sources(),
         "data_sources_file": registry.data_sources_file(),
         "zim_files": registry.zim_candidates(),
+        "photo_packs": registry.photo_packs_status(),
         "games_dir": registry.games_dir(),
         "local_dirs": registry.local_game_dirs(),
         "max_upload_mb": install.MAX_UPLOAD_BYTES // (1024 * 1024),
@@ -559,9 +564,8 @@ def restore_game(request, player, key):
 def data_source(request, player):
     data = _body(request)
     name, path = data.get("name"), (data.get("path") or "").strip()
-    if name != "wikipedia":
-        raise PlatformError("Unknown data source.", "bad_request")
-    if path and not (os.path.isfile(path) and path.lower().endswith(".zim")) and not os.path.isdir(path):
-        raise PlatformError("There's no .zim file at %s." % path, "not_found", 400, fields={"path": "File not found."})
+    problem = registry.check_data_source(name, path)
+    if problem:
+        raise PlatformError(problem, "bad_request", 400, fields={"path": problem})
     registry.set_data_source(name, path or None)
     return JsonResponse({"data_sources": registry.data_sources()})

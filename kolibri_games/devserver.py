@@ -6,6 +6,7 @@ both together.
 
     kolibri-games-preview path/to/games-folder [--port 8765]
         [--wikipedia examples/tiny-wiki]            (or a Wikipedia .zim file)
+        [--photos path/to/photo-packs]              (photo packs for BeaconHunt)
         [--classroom examples/classroom-games/preview.json]
 
 Then open http://127.0.0.1:8765/ and switch between pretend learners, a coach
@@ -208,6 +209,8 @@ class Handler(BaseHTTPRequestHandler):
                 found = (f.read(), "text/javascript")
         elif file_path.startswith(views_common.WIKI_PREFIX):
             found = views_common.wiki_file(service, game, file_path[len(views_common.WIKI_PREFIX):])
+        elif file_path.startswith(views_common.PHOTO_PREFIX):
+            found = views_common.photo_file(service, game, claims.get("u"), file_path[len(views_common.PHOTO_PREFIX):])
         else:
             found = game.source.read(file_path or game.manifest.entry)
         if found is None:
@@ -276,6 +279,7 @@ class Handler(BaseHTTPRequestHandler):
                 "platform": {"version": __version__, "api": API_VERSION}, "can_install": name == "admin",
                 "games": found, "data_sources": registry.data_sources(),
                 "data_sources_file": registry.data_sources_file(), "zim_files": registry.zim_candidates(),
+                "photo_packs": registry.photo_packs_status(),
                 "games_dir": registry.games_dir(), "local_dirs": registry.local_game_dirs(),
                 "max_upload_mb": install.MAX_UPLOAD_BYTES // (1024 * 1024),
             })
@@ -286,11 +290,10 @@ class Handler(BaseHTTPRequestHandler):
             self.require(player, device_admin=True, name=name)
             data = self.body()
             value = (data.get("path") or "").strip()
-            if data.get("name") != "wikipedia":
-                raise PlatformError("Unknown data source.", "bad_request")
-            if value and not os.path.exists(value):
-                raise PlatformError("There's no .zim file at %s." % value, "not_found", 400, fields={"path": "File not found."})
-            registry.set_data_source("wikipedia", value or None)
+            problem = registry.check_data_source(data.get("name"), value)
+            if problem:
+                raise PlatformError(problem, "bad_request", 400, fields={"path": problem})
+            registry.set_data_source(data.get("name"), value or None)
             return self.json(200, {"data_sources": registry.data_sources()})
         if path == "article-lists":
             self.require(player, coach=True)
@@ -413,6 +416,7 @@ def main(argv=None):
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--wikipedia", help="A Wikipedia .zim file (or a folder like examples/tiny-wiki) for Wiki BLAZE.")
     parser.add_argument("--classroom", help="JSON file with Classroom Game resources and pretend saved data.")
+    parser.add_argument("--photos", help="A folder of photo packs for BeaconHunt.")
     args = parser.parse_args(argv)
     if args.folders:
         os.environ["KOLIBRI_GAMES_PATH"] = os.pathsep.join(os.path.abspath(f) for f in args.folders)
@@ -420,6 +424,8 @@ def main(argv=None):
     os.environ.setdefault("KOLIBRI_HOME", tempfile.mkdtemp(prefix="kolibri-games-preview-"))
     if args.wikipedia:
         os.environ["KOLIBRI_GAMES_DATA_WIKIPEDIA"] = os.path.abspath(args.wikipedia)
+    if args.photos:
+        os.environ["KOLIBRI_GAMES_DATA_PHOTO_PACKS"] = os.path.abspath(args.photos)
     if args.classroom:
         load_classroom(args.classroom)
     games = registry.discover(refresh=True)
