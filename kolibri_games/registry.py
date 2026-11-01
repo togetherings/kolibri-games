@@ -340,7 +340,7 @@ _cache_lock = threading.Lock()
 def discover(refresh=False):
     """All games found, in display order. Cached for a few seconds."""
     with _cache_lock:
-        if not refresh and _cache["games"] is not None and time.time() - _cache["at"] < CACHE_SECONDS:
+        if not refresh and _cache["games"] is not None and time.monotonic() - _cache["at"] < CACHE_SECONDS:
             return _cache["games"]
         games, seen = [], {}
         classroom_games, broken = _classroom_games()
@@ -353,7 +353,7 @@ def discover(refresh=False):
             seen[entry.key] = entry
             games.append(entry)
         games.sort(key=lambda g: (not g.playable, g.title.lower()))
-        _cache.update(at=time.time(), games=games)
+        _cache.update(at=time.monotonic(), games=games)
         return games
 
 

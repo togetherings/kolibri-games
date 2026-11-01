@@ -11,6 +11,7 @@ page calls this API.
 """
 import json
 import os
+import time
 from functools import wraps
 from html import escape
 
@@ -42,7 +43,7 @@ TOKEN_SALT = "kolibri_games.play"
 TOKEN_MAX_AGE = 12 * 3600
 COACH_KINDS = ("coach", "classroom assignable coach", "admin")
 
-service = GameService(DjangoStore())
+service = GameService(DjangoStore(), monotonic=time.monotonic)
 
 
 # ------------------------------------------------------------------ helpers
@@ -271,6 +272,8 @@ def games(request, player):
         {
             "me": {"name": player.name, "role": player.role, "can_install": can_install(request.user)},
             "platform": {"version": __version__, "api": API_VERSION},
+            # The page compares this with the device's clock and warns coaches if they differ.
+            "server_time": service.now().isoformat(),
             "games": [card(service, g, player) for g in found if g.manifest is not None or player.is_admin],
         }
     )
@@ -437,6 +440,12 @@ def challenges(request, player, key):
 def challenge(request, player, key, challenge_id):
     game = _game(key, playable=False)
     return JsonResponse(service.save_challenge(game, player, _body(request), _classes_for(player), int(challenge_id)))
+
+
+@require_POST
+@api(coach=True)
+def challenge_open_close(request, player, key, challenge_id, action):
+    return JsonResponse(service.open_or_close_challenge(_game(key, playable=False), player, int(challenge_id), action))
 
 
 @require_POST

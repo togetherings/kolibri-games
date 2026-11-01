@@ -144,7 +144,7 @@ def test_challenge_race_is_scored_by_the_server(blaze):
     game, service, clock, amina, ben, coach = blaze
     c = service.save_challenge(game, coach, {
         "title": "Cat to Moon", "class_id": CLASS_A, "settings": {"start": "cat", "goal": "moon", "list": "all"},
-        "opens_at": clock().isoformat(), "closes_at": clock.t.replace(hour=17).isoformat(),
+        "opens": "now", "closes": "time", "closes_at": clock.t.replace(hour=17).isoformat(),
     }, {CLASS_A: "Class A"})
     assert c["start"] == "Cat" and c["goal"] == "Moon"
     assert c["best"] == {"status": "found", "steps": 5, "route": ["Cat", "Mammal", "Whale", "Ocean", "Earth", "Moon"]}

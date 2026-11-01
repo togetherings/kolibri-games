@@ -44,7 +44,9 @@ browser's developer tools.
 
 On the games page, click **Challenges** on the Wiki BLAZE card, then **New challenge**:
 
-- **Name, class, opening and closing time**, which attempt counts and a time limit, as for any game.
+- **Name, class, when it opens and closes**, which attempt counts and a time limit, as for any
+  game. A challenge can open now, when you press **Open**, or at a set time, and close when you
+  press **Close** or at a set time.
 - **Articles learners can visit:** the game's own list (Wikipedia for Schools, about 10,500
   articles curated by SolarSpell), every article in the Wikipedia file, or one of your own lists.
 - **Start and goal:** start typing to see matching titles. Leave both blank and a random pair is
@@ -56,6 +58,10 @@ works out the **shortest route** in the background and shows it to you on the Ch
 the challenge is open.
 
 **After the challenge closes**, its scoreboard shows everyone's routes and the shortest route.
+
+A Raspberry Pi without a clock battery loses time while it's switched off, so set times can be
+wrong. The Open and Close buttons always work, and coaches see a warning on the Challenges and
+Setup pages when the server's clock and their device's clock disagree.
 
 **Results** show each learner's counted route, and under *History* every step: each link
 followed and each time they went back, with times.

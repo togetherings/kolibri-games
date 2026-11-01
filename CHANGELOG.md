@@ -8,8 +8,13 @@
   number of links in the final chain. Coaches see every step; after a challenge closes, everyone
   sees all routes and the shortest route. Comes with the SolarSpell Wikipedia for Schools list
   (about 10,500 articles), and coaches can make their own article lists.
-- **Challenges:** coaches set a game up for a class with its own settings, open and close dates,
-  time limit and scoreboard. Learners see their classes' challenges on the game card.
+- **Challenges:** coaches set a game up for a class with its own settings, time limit and
+  scoreboard. Coaches open and close a challenge with buttons, or at set times. Learners see their
+  classes' challenges on the game card.
+- **Wrong clocks:** a Raspberry Pi without a clock battery can have the wrong time. The Open and
+  Close buttons always work, "open now" uses the server's own time, coaches see a warning when the
+  server's clock and their device disagree by more than 10 minutes, and game times aren't thrown
+  off when the clock jumps (for example when the Pi reaches the internet).
 - **Installing Free-play Games:** device administrators install, update, roll back and remove
   games on the Setup page. Games are zips (made with `kolibri-games-pack` or any zip tool).
 - The Wikipedia file for Wiki BLAZE is chosen on the Setup page.

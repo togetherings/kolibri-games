@@ -39,6 +39,7 @@ urlpatterns = [
     re_path(GAME + r"/challenges$", views.challenges, name="challenges"),
     re_path(GAME + r"/challenges/%s$" % CHALLENGE, views.challenge, name="challenge"),
     re_path(GAME + r"/challenges/%s/delete$" % CHALLENGE, views.challenge_delete, name="challenge_delete"),
+    re_path(GAME + r"/challenges/%s/(?P<action>open|close)$" % CHALLENGE, views.challenge_open_close, name="challenge_open_close"),
     re_path(GAME + r"/articles$", views.articles, name="articles"),
     re_path(r"^api/article-lists$", views.article_lists, name="article_lists"),
     re_path(r"^api/article-lists/%s$" % LIST, views.article_list, name="article_list"),

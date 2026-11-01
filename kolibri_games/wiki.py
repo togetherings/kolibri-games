@@ -575,7 +575,7 @@ def shortest_route(wiki, start, goal, allowed, max_pages=ROUTE_MAX_PAGES, max_se
     answered quickly.
     """
     with _route_lock:
-        began = time.time()
+        began = time.monotonic()  # never jumps, even when the Pi's clock is corrected
         parent = {start: None}
         frontier = [start]
         pages = 0
@@ -595,7 +595,7 @@ def shortest_route(wiki, start, goal, allowed, max_pages=ROUTE_MAX_PAGES, max_se
                 pages += 1
                 if pages % 25 == 0:
                     time.sleep(0.01)  # let the web server answer other requests
-                if pages >= max_pages or time.time() - began > max_seconds or len(parent) > ROUTE_MAX_KNOWN:
+                if pages >= max_pages or time.monotonic() - began > max_seconds or len(parent) > ROUTE_MAX_KNOWN:
                     return {"status": "too_far"}
             if not next_frontier:
                 return {"status": "not_found"}

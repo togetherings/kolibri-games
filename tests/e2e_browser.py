@@ -229,6 +229,28 @@ def main():
             if shots:
                 page.screenshot(path=os.path.join(shots, "6-coach-results.png"), full_page=True)
 
+            # Coach closes the challenge with the button: routes appear on the scoreboard
+            page.goto(base + "?as=coach#/challenges/" + BLAZE)
+            page.locator(".challenge-panel button:has-text('Close now')").click()
+            page.locator(".challenge-panel .tag:has-text('Closed')").wait_for()
+            page.locator(".challenge-panel button:has-text('Reopen')").wait_for()
+            page.locator(".challenge-panel a:has-text('Scoreboard')").click()
+            page.locator("th:has-text('Route')").wait_for()
+            assert "Cat \u2192 Mammal \u2192 Whale" in page.locator("table").inner_text()
+
+            # A device whose clock is 3 days ahead of the server sees a warning
+            skewed = browser.new_page(viewport={"width": 1100, "height": 900})
+            skewed.clock.install(time=time.time() + 3 * 24 * 3600)
+            skewed.goto(base + "?as=coach#/challenges/" + BLAZE)
+            skewed.locator(".clock-notice").wait_for()
+            assert "clock looks wrong" in skewed.locator(".clock-notice").inner_text()
+            if shots:
+                skewed.screenshot(path=os.path.join(shots, "6b-clock-notice.png"))
+            skewed.close()
+            page.goto(base + "#/challenges/" + BLAZE)
+            page.locator(".challenge-panel").first.wait_for()
+            assert page.locator(".clock-notice").count() == 0  # same clock: no warning
+
             # Coach: free-play settings; learners then see initials
             page.goto(base + "#/settings/f-org.togetherings.number-hunt")
             page.locator("form fieldset").first.wait_for()

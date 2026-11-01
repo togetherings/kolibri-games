@@ -53,7 +53,10 @@ class Challenge(models.Model):
     settings_json = models.TextField(default="{}")
     counts = models.CharField(max_length=8, default="first")
     time_limit = models.PositiveIntegerField(default=0)  # minutes, 0 for none
-    opens_at = models.DateTimeField()
+    # "open" or "closed" once a coach presses Open or Close; "auto" follows the set times.
+    # The buttons matter because a Raspberry Pi without a clock battery can have the wrong time.
+    status = models.CharField(max_length=8, default="auto")
+    opens_at = models.DateTimeField(null=True, blank=True)
     closes_at = models.DateTimeField(null=True, blank=True)
     created_by_id = models.CharField(max_length=32, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

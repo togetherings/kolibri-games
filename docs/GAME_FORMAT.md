@@ -87,8 +87,9 @@ see on the scoreboard (names, initials only, or only their own result), and a ti
 ## Free play and challenges
 
 Learners can play any game whenever they like (**free play**), with the settings a coach chose for
-the whole facility. A coach can also set up a **challenge** for one class: its own name, open and
-close dates, which attempt counts, time limit and game settings. Each challenge has its own
+the whole facility. A coach can also set up a **challenge** for one class: its own name, when it
+opens and closes (with Open and Close buttons, or at set times), which attempt counts, time limit
+and game settings. Each challenge has its own
 scoreboard. Your game doesn't need to do anything different: `KG.ready()` tells you the settings
 and whether it's a challenge.
 

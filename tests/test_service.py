@@ -148,7 +148,7 @@ def test_state_size_limit(setup):
 
 def make_challenge(service, game, coach, clock, **extra):
     data = {"title": "Friday race", "class_id": CLASS_A, "counts": "best",
-            "opens_at": clock().isoformat(), "closes_at": (clock.t.replace(hour=17)).isoformat()}
+            "opens": "now", "closes": "time", "closes_at": (clock.t.replace(hour=17)).isoformat()}
     data.update(extra)
     return service.save_challenge(game, coach, data, {CLASS_A: "Class A"})
 
@@ -157,8 +157,8 @@ def test_challenge_is_checked_when_saved(setup):
     service, clock, amina, ben, cara, coach = setup
     game = folder_game("memory-match")
     with pytest.raises(PlatformError) as e:
-        service.save_challenge(game, coach, {"title": "", "class_id": CLASS_B, "opens_at": "2026-01-02T10:00:00Z",
-                                             "closes_at": "2026-01-01T10:00:00Z", "time_limit": 999}, {CLASS_A: "Class A"})
+        service.save_challenge(game, coach, {"title": "", "class_id": CLASS_B, "opens": "time", "opens_at": "2026-01-02T10:00:00Z",
+                                             "closes": "time", "closes_at": "2026-01-01T10:00:00Z", "time_limit": 999}, {CLASS_A: "Class A"})
     assert set(e.value.fields) >= {"title", "class_id", "closes_at", "time_limit"}
     with pytest.raises(PlatformError):  # a learner can't make challenges
         service.save_challenge(game, amina, {"title": "x", "class_id": CLASS_A}, {CLASS_A: "Class A"})
@@ -189,7 +189,7 @@ def test_challenges_open_and_close(setup):
     service, clock, amina, ben, cara, coach = setup
     game = folder_game("memory-match")
     later = clock.t.replace(hour=12).isoformat()
-    c = make_challenge(service, game, coach, clock, opens_at=later)
+    c = make_challenge(service, game, coach, clock, opens="time", opens_at=later)
     assert c["state"] == "upcoming"
     assert service.challenges_for(game, amina) == []  # learners don't see it yet
     with pytest.raises(PlatformError) as e:
@@ -212,7 +212,7 @@ def test_coach_can_edit_and_delete_only_their_classes_challenges(setup):
     game = folder_game("memory-match")
     c = make_challenge(service, game, coach, clock)
     changed = service.save_challenge(game, coach, {"title": "Renamed", "class_id": CLASS_A, "counts": "first",
-                                                   "opens_at": c["opens_at"], "closes_at": c["closes_at"]},
+                                                   "opens": "now", "closes": "time", "closes_at": c["closes_at"]},
                                      {CLASS_A: "Class A"}, c["id"])
     assert changed["title"] == "Renamed" and changed["counts"] == "first"
     other_coach = Player("2" * 32, "Mr Other", FAC, is_coach=True, coach_class_ids={CLASS_B})
@@ -220,6 +220,51 @@ def test_coach_can_edit_and_delete_only_their_classes_challenges(setup):
         service.delete_challenge(game, other_coach, c["id"])
     service.delete_challenge(game, coach, c["id"])
     assert service.challenges_for(game, coach, include_old=True) == []
+
+
+def test_open_and_close_buttons_work_whatever_the_clock_says(setup):
+    service, clock, amina, ben, cara, coach = setup
+    game = folder_game("memory-match")
+    c = make_challenge(service, game, coach, clock, opens="button", closes="button")
+    assert c["state"] == "upcoming" and c["opens_at"] is None
+    with pytest.raises(PlatformError):
+        service.start(game, amina, c["id"])
+    c = service.open_or_close_challenge(game, coach, c["id"], "open")
+    assert c["state"] == "open"
+    clock.advance(-30 * 24 * 3600)  # the Pi's clock goes back a month: still open
+    assert service.challenges_for(game, amina)[0]["state"] == "open"
+    service.start(game, amina, c["id"])
+    c = service.open_or_close_challenge(game, coach, c["id"], "close")
+    clock.advance(60 * 24 * 3600)
+    assert c["state"] == "closed" and service.challenge_state(service.store.challenge_get(c["id"])) == "closed"
+    assert service.open_or_close_challenge(game, coach, c["id"], "open")["state"] == "open"  # reopen
+    other_coach = Player("2" * 32, "Mr Other", FAC, is_coach=True, coach_class_ids={CLASS_B})
+    with pytest.raises(PlatformError):
+        service.open_or_close_challenge(game, other_coach, c["id"], "close")
+
+
+def test_open_now_uses_the_servers_clock(setup):
+    service, clock, amina, ben, cara, coach = setup
+    game = folder_game("memory-match")
+    # The coach's device is a week ahead of the server: "now" still opens it.
+    c = make_challenge(service, game, coach, clock, closes="button")
+    assert c["state"] == "open"
+    with pytest.raises(PlatformError) as e:  # a closing time already past by the server's clock
+        make_challenge(service, game, coach, clock, closes="time", closes_at="2025-12-31T09:00:00+00:00")
+    assert "server's clock" in e.value.fields["closes_at"]
+
+
+def test_a_clock_jump_during_play_doesnt_count(setup):
+    _, clock, amina, *_ = setup
+    steady = {"t": 1000.0}
+    service = GameService(MemoryStore(), now=clock, monotonic=lambda: steady["t"])
+    game = folder_game("memory-match")
+    service.save_settings(game, FAC, {"time_limit": 5}, {}, "c" * 32)
+    aid = service.start(game, amina)["attempt"]["id"]
+    steady["t"] += 40
+    clock.advance(3 * 24 * 3600)  # the Pi reaches the internet and its clock jumps 3 days
+    result = service.finish(game, amina, aid, {"score": 9})
+    assert result["attempt"]["seconds"] == 40
 
 
 def test_registry_finds_games_and_reports_problems(tmp_path):
