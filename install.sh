@@ -214,8 +214,8 @@ say "Enabling the plugin and updating the database"
 run_kolibri plugin enable "$PLUGIN"
 run_kolibri manage migrate --noinput
 
-mkdir -p "$KHOME/kolibri_games/games"
-chown "$KUSER" "$KHOME/kolibri_games" "$KHOME/kolibri_games/games" 2>/dev/null || true
+mkdir -p "$KHOME/kolibri_games/games" "$KHOME/kolibri_games/photo-packs"
+chown "$KUSER" "$KHOME/kolibri_games" "$KHOME/kolibri_games/games" "$KHOME/kolibri_games/photo-packs" 2>/dev/null || true
 
 say "Checking the setup"
 run_kolibri manage kolibri_games_check

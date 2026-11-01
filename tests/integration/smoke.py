@@ -216,6 +216,41 @@ if admin is not None:
 else:
     check(False, "no super admin called 'admin' to test installing")
 
+# ------------------------------------------------- photo guessing (BeaconHunt)
+
+if admin is not None:
+    import tempfile
+
+    sys.path.insert(0, os.getcwd())
+    from tests.make_test_pack import make as make_pack
+
+    packs = tempfile.mkdtemp(prefix="photo-packs-")
+    make_pack(packs, as_zip=True)
+    status, _ = jpost(a, base + "api/data-sources", {"name": "photo-packs", "path": packs})
+    check(status == 200, "administrator chose the photo packs folder")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for name in os.listdir("tests/fixtures/photo-game"):
+            z.write(os.path.join("tests/fixtures/photo-game", name), name)
+    r = a.post(base + "api/install", data=buf.getvalue(), content_type="application/zip")
+    check(r.status_code == 201, "a photo-guess game installs: %s" % r.content[:200])
+    PG = "f-org.example.photo-test"
+    status, st = jget(a, base + "api/status")
+    check([p["id"] for p in st["photo_packs"]["packs"]] == ["test-west-africa"], "Setup lists the photo pack")
+    status, session = jget(learner, base + "api/games/" + PG)
+    status, started = jpost(learner, base + "api/games/%s/attempts" % PG)
+    check(status == 201 and started["public"]["rounds"] == 3, "photo game starts with 3 rounds: %s" % (started,))
+    aid = started["attempt"]["id"]
+    r = learner.get(base + session["play_url"] + started["public"]["photo"]["url"])
+    check(r.status_code == 200 and r["Content-Type"].startswith("image/"), "the round's photo is served")
+    check(learner.get(base + session["play_url"] + "__photos__/%d/1" % aid).status_code == 404, "later photos can't be fetched early")
+    for _ in range(3):
+        status, reply = jpost(learner, base + "api/games/%s/attempts/%d/moves" % (PG, aid), {"type": "guess", "data": {"country": "SLE"}})
+    check(status == 200 and reply["done"] and len(reply["results"]) == 3, "three guesses play the three rounds")
+    status, result = jpost(learner, base + "api/games/%s/attempts/%d/finish" % (PG, aid), {"score": 1})
+    check(status == 200 and result["attempt"]["score"] == reply["total"], "the server added up the points: %s" % reply["total"])
+    jpost(a, base + "api/games/%s/remove" % PG)
+
 # ------------------------------------------------------------ Wiki BLAZE
 
 wiki_zim = os.environ.get("KOLIBRI_GAMES_TEST_WIKI")

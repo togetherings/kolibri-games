@@ -42,7 +42,7 @@ def verify(source):
         if not source.exists("index.html"):
             problems.append("Kolibri needs an index.html at the top of an HTML5 app.")
     else:
-        problems = [p for p in check(manifest, source) if "data source" not in p]
+        problems = check(manifest, source, with_data=False)
     return manifest, problems
 
 

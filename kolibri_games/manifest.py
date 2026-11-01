@@ -29,12 +29,16 @@ GAME_TYPES = ("free-play", "classroom")
 #: Server-side services built into this plugin that a Free-play Game can use.
 #: "wikipedia-race": the server reads Wikipedia articles for the game, checks
 #: every link the learner follows and works out the score (see wikirace.py).
-SERVICES = ("wikipedia-race",)
+#: "photo-guess": the server picks street photos from photo packs, keeps where
+#: they were taken hidden, and scores each country guess (see photoguess.py).
+SERVICES = ("wikipedia-race", "photo-guess")
 
 #: Setting types. "article" (a Wikipedia article title) and "article_list" (a
 #: list of allowed articles) are only for games that use "wikipedia-race".
-SETTING_TYPES = ("integer", "number", "boolean", "choice", "text", "article", "article_list")
+#: "photo_region" (a photo pack, or the whole world) is only for "photo-guess".
+SETTING_TYPES = ("integer", "number", "boolean", "choice", "text", "article", "article_list", "photo_region")
 WIKI_SETTING_TYPES = ("article", "article_list")
+SERVICE_SETTING_TYPES = {"article": "wikipedia-race", "article_list": "wikipedia-race", "photo_region": "photo-guess"}
 
 # For Classroom Games' scoreboards.
 SAVED_IN = ("scorm",)
@@ -119,6 +123,7 @@ class Manifest(object):
         self.data = data.get("data", [])
         self.service = data.get("service")
         self.wikipedia = data.get("wikipedia") or {}
+        self.photos = data.get("photos") or {}
         # Classroom Games
         self.scoreboards = data.get("scoreboards")
 
@@ -177,8 +182,8 @@ def _check_setting(field, i, problems, service):
     if ftype not in SETTING_TYPES:
         problems.append("%s.type must be one of %s." % (where, ", ".join(SETTING_TYPES)))
         return
-    if ftype in WIKI_SETTING_TYPES and service != "wikipedia-race":
-        problems.append("%s: '%s' settings are only for games that use the wikipedia-race service." % (where, ftype))
+    if ftype in SERVICE_SETTING_TYPES and service != SERVICE_SETTING_TYPES[ftype]:
+        problems.append("%s: '%s' settings are only for games that use the %s service." % (where, ftype, SERVICE_SETTING_TYPES[ftype]))
     if not isinstance(field.get("label"), str) or not field["label"].strip():
         problems.append("%s.label is required." % where)
     if ftype == "choice":
@@ -365,7 +370,7 @@ def validate(data):
     clean["entry"] = safe_relpath(data.get("entry", "index.html"))
 
     if gtype == "classroom":
-        for name in ("scoring", "settings", "data", "service", "wikipedia"):
+        for name in ("scoring", "settings", "data", "service", "wikipedia", "photos"):
             if name in data:
                 problems.append("Classroom Games can't use '%s'. Their scores come from their saved data." % name)
         clean["scoreboards"] = _check_scoreboards(data.get("scoreboards"), problems)
@@ -412,6 +417,19 @@ def validate(data):
                     "Games that use wikipedia-race need the settings 'start' and 'goal' (type article) "
                     "and 'list' (type article_list)."
                 )
+
+        if service == "photo-guess":
+            photos = data.get("photos", {})
+            if not isinstance(photos, dict) or safe_relpath(photos.get("countries", "")) is None:
+                problems.append("Games that use photo-guess need photos.countries: the path of their countries file.")
+            names = [d.get("name") for d in sources if isinstance(d, dict)] if isinstance(sources, list) else []
+            if "photo-packs" not in names:
+                problems.append("Games that use photo-guess must list the 'photo-packs' data source.")
+            if not data.get("scoring"):
+                problems.append("Games that use photo-guess need a scoring section.")
+            types = {f.get("key"): f.get("type") for f in settings if isinstance(f, dict)} if isinstance(settings, list) else {}
+            if types.get("region") != "photo_region" or types.get("rounds") != "integer":
+                problems.append("Games that use photo-guess need the settings 'region' (type photo_region) and 'rounds' (type integer).")
 
     if problems:
         raise ManifestError(problems)
@@ -469,6 +487,12 @@ def clean_value(field, value):
         if len(value) > int(field.get("max_length", 500 if ftype == "text" else 300)):
             raise ValueError("is too long")
         return value.strip() if ftype == "article" else value
+    if ftype == "photo_region":
+        # "world" (every photo pack) or a pack id; whether the pack is on this
+        # device is checked when settings are saved.
+        if isinstance(value, str) and (value == "world" or re.match(r"^[a-z0-9][a-z0-9_-]{0,59}$", value)):
+            return value
+        raise ValueError("must be a region")
     if ftype == "article_list":
         # "default" (the game's own list), "all" (every article) or "list-<id>"
         # (a list made by a coach). Whether a coach's list exists is checked

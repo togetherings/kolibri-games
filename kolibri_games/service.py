@@ -19,7 +19,7 @@ import threading
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 
-from . import classroom, ranking, wiki, wikirace
+from . import classroom, photoguess, photos, ranking, wiki, wikirace
 from .manifest import clean_settings, merge_settings
 
 MAX_EVENTS = 2000
@@ -216,6 +216,8 @@ class GameService(object):
             f = dict(f)
             if f["type"] == "article_list":
                 f["choices"] = self.list_choices(game, facility_id)
+            elif f["type"] == "photo_region":
+                f["choices"] = self.region_choices(game)
             fields.append(f)
         return {"platform": game.manifest.platform_settings_schema(), "game": fields}
 
@@ -227,6 +229,8 @@ class GameService(object):
         if not errors and m.service == "wikipedia-race":
             # Free play: a blank start and goal means a new random pair each time.
             g_vals, errors = self._check_race_settings(game, facility_id, g_vals, pick_random=False)
+        if not errors and m.service == "photo-guess":
+            errors = self._check_photo_settings(game, g_vals)
         if errors:
             raise PlatformError(" ".join(errors.values()), "invalid_settings", fields=errors)
         self.store.settings_set(game.key, facility_id, p_vals, g_vals, by_user_id)
@@ -343,6 +347,91 @@ class GameService(object):
         values["start"], values["goal"] = start or "", goal or ""
         return values, {}
 
+    # ======================================================== photo guessing
+
+    def photo_packs(self, game):
+        """{pack id: PhotoPack} from the photo-packs folder."""
+        return photos.find_packs(game.data_paths().get("photo-packs"))
+
+    def region_choices(self, game):
+        packs = self.photo_packs(game)
+        choices = [{"value": "world", "label": "The whole world (every photo pack)"}]
+        for p in sorted(packs.values(), key=lambda p: p.title.lower()):
+            choices.append({"value": p.id, "label": "%s (%d places)" % (p.title, len(p.places))})
+        return choices
+
+    _countries = {}
+
+    def countries(self, game):
+        """The game's countries file: code -> {name, lat, lon, ...}, read once per game version."""
+        key = (game.key, game.manifest.version)
+        if key not in self._countries:
+            path = game.manifest.photos.get("countries")
+            found = game.source.read(path) if path else None
+            if found is None:
+                raise PlatformError("The game's countries file (%s) is missing." % path, "no_countries", 409)
+            try:
+                data = json.loads(found[0].decode("utf-8"))
+            except ValueError:
+                raise PlatformError("The game's countries file isn't valid JSON.", "no_countries", 409)
+            self._countries[key] = {
+                code: c for code, c in data.items()
+                if isinstance(c, dict) and isinstance(c.get("lat"), (int, float)) and isinstance(c.get("lon"), (int, float))
+            }
+        return self._countries[key]
+
+    def hunt(self, game, region):
+        packs = self.photo_packs(game)
+        if region in (None, "", "world"):
+            chosen = list(packs.values())
+        elif region in packs:
+            chosen = [packs[region]]
+        else:
+            raise PlatformError("The photos for this region aren't on this device any more.", "no_photos", 409)
+        if not chosen:
+            raise PlatformError("There are no photo packs on this device.", "no_photos", 409)
+        return photoguess.Hunt(chosen, self.countries(game))
+
+    def _rounds(self, settings):
+        try:
+            return max(1, min(photoguess.MAX_ROUNDS, int(settings.get("rounds") or 5)))
+        except (TypeError, ValueError):
+            return 5
+
+    def _check_photo_settings(self, game, values):
+        region = values.get("region", "world")
+        if region != "world" and region not in self.photo_packs(game):
+            return {"region": "There's no photo pack for that region on this device."}
+        return {}
+
+    def _photo_refs(self, game, ctx):
+        """The places for a new attempt: a challenge's fixed places, or a fresh pick."""
+        if ctx.challenge is not None and (ctx.challenge.settings or {}).get("_places"):
+            return ctx.challenge.settings["_places"]
+        hunt = self.hunt(game, ctx.settings.get("region"))
+        try:
+            return photoguess.pick_places(hunt.packs.values(), self._rounds(ctx.settings))
+        except photoguess.GuessError as e:
+            raise PlatformError(str(e), e.code, 409)
+
+    def attempt_photo(self, game, user_id, attempt_id, index):
+        """(bytes, mimetype) of one round's photo, for the player whose attempt it is.
+
+        Only rounds the player has reached can be fetched, so a learner can't
+        look ahead. The photo's hidden GPS data is removed (see photos.py).
+        """
+        attempt = self.store.attempt_get(attempt_id)
+        if attempt is None or attempt.user_id != user_id or attempt.game_key != game.key:
+            return None
+        state = attempt.state or {}
+        refs = state.get("places") or []
+        if not 0 <= index < len(refs) or index > len(state.get("results") or []):
+            return None
+        pack_id, _, place_id = refs[index].partition("/")
+        pack = self.photo_packs(game).get(pack_id)
+        place = pack.places.get(place_id) if pack else None
+        return pack.photo(place) if place else None
+
     def suggest_articles(self, game, facility_id, text, list_value):
         source = self.wiki_source(game)
         resolved, _key = self.resolved_list(game, facility_id, list_value or "default", source)
@@ -412,6 +501,7 @@ class GameService(object):
                 )
         mine = self.store.attempts(game.key, player.facility_id, ctx.challenge_id, player.id)
         is_race = game.manifest.service == "wikipedia-race"
+        is_hunt = game.manifest.service == "photo-guess"
 
         # Pick up an unfinished attempt where the player left it, and close older ones.
         open_attempts = sorted([a for a in mine if a.status == "started" and not a.voided], key=lambda a: a.number)
@@ -421,6 +511,8 @@ class GameService(object):
                 public = a.public
                 if is_race:
                     public = self.race(game, player.facility_id, ctx.settings).resume(a.state)
+                elif is_hunt:
+                    public = self.hunt(game, ctx.settings.get("region")).public(a.state, a.id)
                 return {
                     "attempt": self._attempt_info(a, mine, ctx.counts),
                     "public": public,
@@ -443,6 +535,9 @@ class GameService(object):
                 state, public = race.start(start, goal)
             except wiki.WikiError as e:
                 raise PlatformError(str(e), "no_article", 409)
+        elif is_hunt:
+            hunt = self.hunt(game, ctx.settings.get("region"))
+            state = hunt.start(self._photo_refs(game, ctx))
         number = max([a.number for a in mine] or [0]) + 1
         attempt = self.store.attempt_create(
             game_key=game.key,
@@ -456,7 +551,7 @@ class GameService(object):
             status="started",
             voided=False,
             started_at=self.now(),
-            public={} if is_race else public,  # race pages are rebuilt from the state when resuming
+            public={} if is_race or is_hunt else public,  # rebuilt from the state when resuming
             state=state,
             events=[],
             detail={},
@@ -464,6 +559,8 @@ class GameService(object):
         self._started[attempt.id] = self.monotonic()
         while len(self._started) > 10000:  # keep memory small: forget the oldest
             self._started.popitem(last=False)
+        if is_hunt:
+            public = hunt.public(state, attempt.id)  # photo addresses include the attempt id
         return {
             "attempt": self._attempt_info(attempt, mine + [attempt], ctx.counts),
             "public": public,
@@ -491,6 +588,12 @@ class GameService(object):
                 raise PlatformError(str(e), e.code)
             except wiki.WikiError as e:
                 raise PlatformError(str(e), "no_article", 409)
+        elif game.manifest.service == "photo-guess":
+            hunt = self.hunt(game, ctx.settings.get("region"))
+            try:
+                attempt.state, reply, logged = hunt.move(attempt.state, kind, data, attempt.id)
+            except photoguess.GuessError as e:
+                raise PlatformError(str(e), e.code)
         elapsed = self._elapsed(attempt)
         attempt.events = events + [{"t": round(elapsed, 1), "type": kind, "data": logged}]
         self.store.attempt_save(attempt)
@@ -505,6 +608,12 @@ class GameService(object):
             try:
                 score, detail = self.race(game, player.facility_id, ctx.settings).finish(attempt.state)
             except wikirace.RaceError as e:
+                raise PlatformError(str(e), e.code)
+        elif game.manifest.service == "photo-guess":
+            # The server adds up the points it gave for each guess.
+            try:
+                score, detail = self.hunt(game, ctx.settings.get("region")).finish(attempt.state)
+            except photoguess.GuessError as e:
                 raise PlatformError(str(e), e.code)
         else:
             # The game reports its own score; impossible ones are refused.
@@ -681,7 +790,7 @@ class GameService(object):
         if game.manifest.service == "wikipedia-race":
             info.update(self._race_challenge_info(game, c, viewer, info["state"]))
         if info["can_manage"]:
-            info["settings"] = c.settings
+            info["settings"] = {k: v for k, v in (c.settings or {}).items() if not k.startswith("_")}
         return info
 
     def _race_challenge_info(self, game, c, viewer, state):
@@ -785,6 +894,21 @@ class GameService(object):
             # blank pair is filled in now, once.
             values, race_errors = self._check_race_settings(game, coach.facility_id, values, pick_random=True)
             errors.update(race_errors)
+        if game.manifest.service == "photo-guess" and not errors:
+            errors.update(self._check_photo_settings(game, values))
+            if not errors:
+                # Every learner in a challenge gets the same photos, picked now. They're
+                # kept under a hidden "_places" key that is never sent to the browser.
+                old = (existing.settings or {}) if existing is not None else {}
+                same = old.get("region") == values.get("region") and old.get("rounds") == values.get("rounds")
+                if same and old.get("_places"):
+                    values["_places"] = old["_places"]
+                else:
+                    hunt = self.hunt(game, values.get("region"))
+                    try:
+                        values["_places"] = photoguess.pick_places(hunt.packs.values(), self._rounds(values))
+                    except photoguess.GuessError as e:
+                        errors["region"] = str(e)
         if errors:
             raise PlatformError(" ".join(errors.values()), "invalid_challenge", fields=errors)
         if existing is not None and opens == "now" and self.challenge_state(existing) == "open":

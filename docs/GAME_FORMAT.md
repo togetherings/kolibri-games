@@ -78,8 +78,8 @@ page's **Setup** page.
 | `icon`, `color` | no | Icon file and accent colour for the games page. Without an icon, a coloured tile with the first letter is used. |
 | `scoring` | no | Leave it out for games without scores (no scoreboard). `order` is `asc` when lower is better, `desc` when higher is better. `counts` is the default for which attempt counts: `first` (later attempts are practice) or `best`; coaches can change it. `tiebreak` is `seconds` (faster wins ties) or `none`. `min`/`max` refuse impossible scores. `free_play_scoreboard: false` hides the free-play scoreboard, for games whose free-play rounds can't be compared (scores are then only ranked in challenges). |
 | `settings` | no | Options coaches can change, for free play and for each challenge. Types: `integer`, `number` (with optional `min`, `max`), `boolean`, `choice` (with `choices`), `text`. Each needs `key`, `label` and `default`, and can have a `help` line. |
-| `data` | no | Large data the game needs from the device, by name. For now only `[{"name": "wikipedia"}]`, chosen by an administrator on the Setup page. |
-| `service` | no | A server feature built into Kolibri Games. For now only `"wikipedia-race"`: see [WIKI_BLAZE.md](WIKI_BLAZE.md). |
+| `data` | no | Large data the game needs from the device, by name: `wikipedia` (a Wikipedia .zim file) or `photo-packs` (a folder of photo packs), chosen by an administrator on the Setup page. |
+| `service` | no | A server feature built into Kolibri Games: `"wikipedia-race"` (see [WIKI_BLAZE.md](WIKI_BLAZE.md)) or `"photo-guess"` (see [PHOTO_PACKS.md](PHOTO_PACKS.md)). |
 
 Every game also gets these coach settings from the platform: which attempt counts, what learners
 see on the scoreboard (names, initials only, or only their own result), and a time limit.

@@ -225,3 +225,5 @@ input[type="file"] { padding: .35rem; max-width: 100%; }
 .when select { flex: 1 1 12rem; }
 .when input { flex: 1 1 12rem; }
 .clock-notice { font-size: .92rem; }
+ul.packs { margin: .3rem 0 .6rem; padding-left: 1.1rem; }
+ul.packs li { margin: .15rem 0; }

@@ -15,6 +15,8 @@ ASSET_TYPES = {
 SDK_PATH = "__kolibri_games__/sdk.js"
 #: Pictures from the Wikipedia file, for games that use wikipedia-race (see wiki.py).
 WIKI_PREFIX = "__wiki__/"
+#: Round photos, for games that use photo-guess: __photos__/<attempt id>/<round> (see photoguess.py).
+PHOTO_PREFIX = "__photos__/"
 
 # Applied to every game file. "sandbox" keeps a game in an opaque origin even if
 # someone opens its URL directly, and the source lists stop games from loading
@@ -88,6 +90,16 @@ def wiki_file(service, game, path):
     if found is None or not found[1].startswith("image/"):
         return None  # only pictures: articles go through the race rules
     return found
+
+
+def photo_file(service, game, user_id, rest):
+    """(bytes, mimetype) of a round's photo for this player, or None."""
+    if game.manifest is None or game.manifest.service != "photo-guess":
+        return None
+    attempt_id, _, index = rest.partition("/")
+    if not attempt_id.isdigit() or not index.isdigit():
+        return None
+    return service.attempt_photo(game, user_id, int(attempt_id), int(index))
 
 
 def default_icon_svg(title, color):

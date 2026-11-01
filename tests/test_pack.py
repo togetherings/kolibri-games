@@ -51,6 +51,13 @@ def test_pack_makes_a_zip_with_the_files_at_the_top(tmp_path):
     assert e.value.code == 0
 
 
+def test_games_that_need_device_data_can_be_packed_without_it(home, tmp_path):
+    # Wiki BLAZE needs Wikipedia and the photo game needs photo packs; neither is here.
+    for folder in (os.path.join(GAMES, "wiki-blaze"), os.path.join(ROOT, "tests", "fixtures", "photo-game")):
+        path, manifest = pack(folder, str(tmp_path / (os.path.basename(folder) + ".zip")))
+        assert verify(ZipSource(path))[1] == []
+
+
 def test_classroom_examples_check_but_need_their_app(tmp_path):
     manifest, problems = verify(ZipSource(str(tmp_path / "missing.zip")))
     assert manifest is None and problems
