@@ -20,4 +20,5 @@ def test_wiki_blaze_reads_a_zim_file(tmp_path):
     start, goal = wiki.random_pair(w, None)
     assert start != goal
     assert w.random_article()
-    assert "Moon" in [s["path"] for s in wiki.suggest(w, "moo")]
+    assert "Moon" in [s["path"] for s in wiki.suggest(w, "moo")]  # libzim's own title suggestions
+    assert "Moon" in [s["path"] for s in wiki.suggest(w, "Moon")]

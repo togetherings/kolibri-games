@@ -25,6 +25,7 @@ the server stays responsive.
 """
 import bisect
 import json
+import logging
 import os
 import posixpath
 import random
@@ -37,6 +38,8 @@ from html.parser import HTMLParser
 from urllib.parse import quote, unquote
 
 from .sources import guess_type
+
+logger = logging.getLogger(__name__)
 
 #: Where article images are served inside a game (see views.play_file).
 FILE_PREFIX = "__wiki__/"
@@ -185,14 +188,22 @@ class ZimWiki(WikiSource):
         raise WikiError("Couldn't find a random article in the Wikipedia file.")
 
     def suggest(self, text, limit=10):
+        found = []
         with self.lock:
             try:
                 from libzim.suggestion import SuggestionSearcher
 
                 results = SuggestionSearcher(self.archive).suggest(text)
-                return list(results.getResults(0, limit))
+                # Newer libzim versions renamed getResults to get_results.
+                get_results = getattr(results, "get_results", None) or getattr(results, "getResults")
+                found = list(get_results(0, limit))
             except Exception:
-                return []
+                logger.warning("Kolibri Games: title suggestions failed for %r", text, exc_info=True)
+        if not found:
+            # Some ZIM files (or libzim versions) give no suggestions: at least offer an exact title.
+            exact = self.find(text)
+            found = [exact[0]] if exact else []
+        return found
 
 
 class FolderWiki(WikiSource):
@@ -575,7 +586,7 @@ def shortest_route(wiki, start, goal, allowed, max_pages=ROUTE_MAX_PAGES, max_se
     answered quickly.
     """
     with _route_lock:
-        began = time.time()
+        began = time.monotonic()  # never jumps, even when the Pi's clock is corrected
         parent = {start: None}
         frontier = [start]
         pages = 0
@@ -595,7 +606,7 @@ def shortest_route(wiki, start, goal, allowed, max_pages=ROUTE_MAX_PAGES, max_se
                 pages += 1
                 if pages % 25 == 0:
                     time.sleep(0.01)  # let the web server answer other requests
-                if pages >= max_pages or time.time() - began > max_seconds or len(parent) > ROUTE_MAX_KNOWN:
+                if pages >= max_pages or time.monotonic() - began > max_seconds or len(parent) > ROUTE_MAX_KNOWN:
                     return {"status": "too_far"}
             if not next_frontier:
                 return {"status": "not_found"}

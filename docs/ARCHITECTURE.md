@@ -58,7 +58,7 @@ don't depend on Kolibri's internal migration history.
 | Table | What it holds |
 |---|---|
 | `Attempt` | One play: game, learner, challenge (empty for free play), attempt number, status (started, finished, abandoned, expired), server times, score, the server's state (a Wiki BLAZE chain), every move, and the result details. Coach resets mark attempts *voided* rather than deleting them. |
-| `Challenge` | A game set up for one class: name, settings, which attempt counts, time limit, open and close times, and (Wiki BLAZE) the shortest route. |
+| `Challenge` | A game set up for one class: name, settings, which attempt counts, time limit, whether a coach opened or closed it with the buttons (these win over times, since a Pi's clock can be wrong), optional open and close times, and (Wiki BLAZE) the shortest route. |
 | `GameSettings` | Free-play settings per game per facility: platform rules and the game's own options. |
 | `ArticleList` | A coach's list of Wikipedia articles for Wiki BLAZE, per facility. |
 | `PlayerState` | Up to 64 KB of saved data per game per learner. |

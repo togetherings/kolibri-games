@@ -207,6 +207,9 @@
       S.me = data.me;
       S.platform = data.platform;
       S.games = data.games;
+      // How far the server's clock is from this device's (in ms). A Raspberry Pi
+      // without a clock battery can be days behind; see clockNotice().
+      if (data.server_time) S.clockSkew = Date.parse(data.server_time) - Date.now();
       return data.games;
     });
   }
@@ -319,7 +322,7 @@
   function challengeLine(g, c) {
     var bits = [];
     if (c.state === "open") bits.push(c.closes_at ? "Closes " + when(c.closes_at) : "Open");
-    else if (c.state === "upcoming") bits.push("Opens " + when(c.opens_at));
+    else if (c.state === "upcoming") bits.push(c.opens_at ? "Opens " + when(c.opens_at) : "Not open yet");
     else bits.push("Closed " + when(c.closes_at));
     if (isCoach()) bits.push(c.class_name);
     var mine = c.mine;
@@ -611,12 +614,33 @@
     }).catch(showError);
   }
 
+  // A warning for coaches and administrators when the server's clock and this
+  // device's clock disagree by more than 10 minutes.
+  function clockNotice() {
+    var skew = S.clockSkew || 0;
+    if (!isCoach() || Math.abs(skew) < 10 * 60 * 1000) return null;
+    var server = new Date(Date.now() + skew);
+    return el("div", { class: "notice clock-notice", role: "note" }, [
+      el("b", { text: "The server's clock looks wrong. " }),
+      "It says " + when(server.toISOString()) + ", but this device says " + when(new Date().toISOString()) + ". ",
+      "Set times for opening and closing challenges follow the server's clock, so use the Open and Close buttons instead. ",
+      "(A Raspberry Pi without a clock battery loses time while it's switched off, and corrects it when it's online.)"
+    ]);
+  }
+
+  function openText(c) {
+    var state = { open: "open now", upcoming: "not open yet", closed: "closed" }[c.state];
+    var bits = [];
+    if (c.state === "upcoming") bits.push(c.opens_at ? "opens " + when(c.opens_at) : "opens when you press Open");
+    else if (c.opens_at) bits.push("opened " + when(c.opens_at));
+    if (c.state === "closed") bits.push(c.closes_at ? "closed " + when(c.closes_at) : "closed");
+    else bits.push(c.closes_at ? "closes " + when(c.closes_at) : "closes when you press Close");
+    return state[0].toUpperCase() + state.slice(1) + ": " + bits.join(", ") + ".";
+  }
+
   // Dates, start and goal, and (for Wiki BLAZE) the shortest route.
   function challengeFacts(g, c) {
-    var items = [
-      el("dt", { text: "Open" }),
-      el("dd", { text: when(c.opens_at) + (c.closes_at ? " to " + when(c.closes_at) : ", no closing date") + " (" + ({ open: "open now", upcoming: "not open yet", closed: "closed" }[c.state]) + ")" })
-    ];
+    var items = [el("dt", { text: "Open" }), el("dd", { text: openText(c) })];
     if (c.start) items.push(el("dt", { text: "Start and goal" }), el("dd", { text: c.start + " → " + c.goal }));
     if (c.time_limit) items.push(el("dt", { text: "Time limit" }), el("dd", { text: plural(c.time_limit, "minute") }));
     if (c.best) items.push(el("dt", { text: "Shortest route" }), el("dd", { text: bestText(c.best) }));
@@ -992,6 +1016,10 @@
             el("p", { class: "footnote", text: c.class_name + " · " + (c.counts === "first" ? "first attempt counts" : "best attempt counts") })
           ]),
           el("div", { class: "row" }, [
+            c.state !== "open" ? el("button", { class: "primary small", type: "button", text: c.state === "closed" ? "Reopen" : "Open now",
+              onclick: function () { openClose(g, c, "open"); } }) : null,
+            c.state === "open" ? el("button", { class: "small", type: "button", text: "Close now",
+              onclick: function () { openClose(g, c, "close"); } }) : null,
             el("a", { class: "button quiet", href: "#/board/" + base, text: "Scoreboard" }),
             el("a", { class: "button quiet", href: "#/results/" + base, text: "Results" }),
             el("a", { class: "button quiet", href: "#/play/" + base, text: "Try it" }),
@@ -1007,7 +1035,7 @@
         challengeFacts(g, c)
       ]));
     });
-    setView([head, list], { title: g.title });
+    setView([head, clockNotice(), list], { title: g.title });
     // The shortest route is worked out in the background: check again shortly.
     if (data.challenges.some(function (c) { return c.best && c.best.status === "working"; })) {
       clearTimeout(drawChallenges.timer);
@@ -1015,6 +1043,16 @@
         if (location.hash === "#/challenges/" + g.key) renderChallenges(g.key);
       }, 5000);
     }
+  }
+
+  // The Open and Close buttons.
+  function openClose(g, c, action) {
+    if (action === "close" && !confirm("Close \"" + c.title + "\" now? Learners can't play it any more, and everyone can see the scoreboard and routes.")) return;
+    api(gamePath(g.key, "/challenges/" + c.id + "/" + action), { body: {} }).then(function () {
+      toast(action === "open" ? "Challenge opened." : "Challenge closed.");
+      S.games = null;
+      renderChallenges(g.key);
+    }).catch(function (e) { toast(e.message); });
   }
 
   function renderChallengeForm(key, challengeId) {
@@ -1037,8 +1075,27 @@
     var title = el("input", { id: "c-title", type: "text", value: c ? c.title : "", maxlength: "100", required: true });
     var classSel = el("select", { id: "c-class" }, data.classes.map(function (k) { return el("option", { value: k.id, text: k.name }); }));
     if (c) classSel.value = c.class_id;
-    var opens = el("input", { id: "c-opens", type: "datetime-local", value: toLocalInput(c ? c.opens_at : now.toISOString()) });
-    var closes = el("input", { id: "c-closes", type: "datetime-local", value: toLocalInput(c ? c.closes_at : weekLater.toISOString()) });
+    // When to open and close. The buttons work whatever time the server's clock says.
+    var opensMode = el("select", { id: "c-opens-mode" }, [
+      el("option", { value: "now", text: "Now" }),
+      el("option", { value: "button", text: "When I press Open" }),
+      el("option", { value: "time", text: "At a set time" })
+    ]);
+    opensMode.value = !c ? "now" : c.status === "open" || c.state === "open" ? "now" : c.opens_at ? "time" : "button";
+    var opens = el("input", { id: "c-opens", type: "datetime-local", value: toLocalInput(c && c.opens_at ? c.opens_at : now.toISOString()) });
+    var closesMode = el("select", { id: "c-closes-mode" }, [
+      el("option", { value: "button", text: "When I press Close" }),
+      el("option", { value: "time", text: "At a set time" })
+    ]);
+    closesMode.value = c && c.closes_at && c.state !== "closed" ? "time" : "button";
+    var closes = el("input", { id: "c-closes", type: "datetime-local", value: toLocalInput(c && c.closes_at ? c.closes_at : weekLater.toISOString()) });
+    function showTimes() {
+      opens.hidden = opensMode.value !== "time";
+      closes.hidden = closesMode.value !== "time";
+    }
+    opensMode.addEventListener("change", showTimes);
+    closesMode.addEventListener("change", showTimes);
+    showTimes();
     var counts = el("select", { id: "c-counts" }, [
       el("option", { value: "first", text: "First attempt only (later attempts are practice)" }),
       el("option", { value: "best", text: "Best attempt" })
@@ -1049,7 +1106,8 @@
     function simple(key, label, input, help) {
       var err = el("div", { class: "err", hidden: true });
       fields.push({ field: { key: key }, err: err });
-      return el("div", { class: "field" }, [el("label", { for: input.id, text: label }), help ? el("div", { class: "help", text: help }) : null, input, err]);
+      var target = input.id ? input : input.querySelector("[id]");
+      return el("div", { class: "field" }, [el("label", { for: target ? target.id : null, text: label }), help ? el("div", { class: "help", text: help }) : null, input, err]);
     }
 
     var saved = (c && c.settings) || {};
@@ -1068,7 +1126,9 @@
         e.preventDefault();
         var body = {
           title: title.value, class_id: classSel.value, counts: counts.value,
-          time_limit: Number(limit.value || 0), opens_at: fromLocalInput(opens.value), closes_at: fromLocalInput(closes.value),
+          time_limit: Number(limit.value || 0),
+          opens: opensMode.value, opens_at: opensMode.value === "time" ? fromLocalInput(opens.value) : null,
+          closes: closesMode.value, closes_at: closesMode.value === "time" ? fromLocalInput(closes.value) : null,
           settings: {}
         };
         gameFields.forEach(function (f) { body.settings[f.field.key] = f.read(); });
@@ -1091,8 +1151,9 @@
         el("legend", { text: "Challenge" }),
         simple("title", "Name", title, "Learners see this, for example \"Friday race: animals\"."),
         simple("class_id", "Class", classSel),
-        simple("opens_at", "Opens", opens),
-        simple("closes_at", "Closes", closes, "Scores and routes are shown to everyone after the challenge closes."),
+        simple("opens_at", "Opens", el("div", { class: "when" }, [opensMode, opens])),
+        simple("closes_at", "Closes", el("div", { class: "when" }, [closesMode, closes]),
+          "Scores and routes are shown to everyone after the challenge closes."),
         simple("counts", "Which attempt counts", counts),
         simple("time_limit", "Time limit in minutes (0 for none)", limit)
       ]),
@@ -1100,7 +1161,7 @@
       el("div", { class: "row" }, [saveBtn, el("a", { class: "button quiet", href: "#/challenges/" + g.key, text: "Cancel" })])
     ]);
     setView([pageHead([["Games", "#/"], ["Challenges", "#/challenges/" + g.key]], c ? "Change challenge" : "New " + g.title + " challenge",
-      isRace(g) ? "Every learner gets the same start and goal. Leave them blank and one is picked at random." : null), form], { title: g.title });
+      isRace(g) ? "Every learner gets the same start and goal. Leave them blank and one is picked at random." : null), clockNotice(), form], { title: g.title });
   }
 
   // ================================================================ article lists (coaches)
@@ -1210,7 +1271,7 @@
   }
 
   function drawStatus(data) {
-    var parts = [pageHead([["Games", "#/"]], "Setup", "Install games, choose the Wikipedia file, and see anything that stops a game from working.")];
+    var parts = [pageHead([["Games", "#/"]], "Setup", "Install games, choose the Wikipedia file, and see anything that stops a game from working."), clockNotice()];
     if (data.can_install) parts.push(installPanel(data));
     parts.push(wikipediaPanel(data));
 

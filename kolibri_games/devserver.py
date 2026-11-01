@@ -26,6 +26,7 @@ import re
 import secrets
 import sys
 import tempfile
+import time
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
@@ -48,7 +49,7 @@ SECRET = secrets.token_bytes(32)
 ASSETS = os.path.join(os.path.dirname(__file__), "assets")
 
 store = MemoryStore()
-service = GameService(store)
+service = GameService(store, monotonic=time.monotonic)
 
 
 def load_classroom(path):
@@ -253,6 +254,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(200, {
                 "me": {"name": player.name, "role": player.role, "can_install": name == "admin"},
                 "platform": {"version": __version__, "api": API_VERSION},
+                "server_time": service.now().isoformat(),
                 "games": [views_common.card(service, g, player) for g in registry.discover()
                           if g.manifest is not None or player.is_admin],
             })
@@ -383,6 +385,9 @@ class Handler(BaseHTTPRequestHandler):
                 "schema": service.schema(game, player.facility_id)["game"],
                 "classes": [{"id": k, "name": v} for k, v in classes.items()],
             })
+        m = re.match(r"^/challenges/(\d+)/(open|close)$", rest)
+        if m and post:
+            return self.json(200, service.open_or_close_challenge(game, player, int(m.group(1)), m.group(2)))
         m = re.match(r"^/challenges/(\d+)(/delete)?$", rest)
         if m and post:
             if m.group(2):

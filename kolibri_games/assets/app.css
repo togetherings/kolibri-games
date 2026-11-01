@@ -219,3 +219,9 @@ textarea { font: .9rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monos
 .install-result { margin-top: .6rem; font-size: .92rem; }
 .install-result.err { color: var(--danger); }
 input[type="file"] { padding: .35rem; max-width: 100%; }
+
+/* ------------------------------------------------------- open and close */
+.when { display: flex; flex-wrap: wrap; gap: .5rem; }
+.when select { flex: 1 1 12rem; }
+.when input { flex: 1 1 12rem; }
+.clock-notice { font-size: .92rem; }

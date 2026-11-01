@@ -16,6 +16,7 @@ Words used here:
 """
 import json
 import threading
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 
 from . import classroom, ranking, wiki, wikirace
@@ -89,8 +90,8 @@ class Store(object):
     seconds, score, and dict/list properties public, state, events, detail.
 
     Challenge: id, game_key, facility_id, class_id, class_name, title,
-    settings (dict), counts, time_limit, opens_at, closes_at, created_by_id,
-    best (dict).
+    settings (dict), counts, time_limit, status ("auto", "open" or "closed":
+    see challenge_state), opens_at, closes_at, created_by_id, best (dict).
 
     ArticleList: id, facility_id, name, titles (text), updated_at, created_by_id.
     """
@@ -186,10 +187,16 @@ class Context(object):
 
 
 class GameService(object):
-    def __init__(self, store, now=utcnow, background=run_in_background):
+    def __init__(self, store, now=utcnow, background=run_in_background, monotonic=None):
         self.store = store
         self.now = now
         self.background = background
+        # A clock that never jumps (time.monotonic in Kolibri). A Raspberry Pi
+        # without a clock battery can jump days ahead when it reaches the
+        # internet; game times are measured with this clock so a jump during
+        # play doesn't count. Defaults to the normal clock (for tests).
+        self.monotonic = monotonic or (lambda: self.now().timestamp())
+        self._started = OrderedDict()  # attempt id -> monotonic time it started (this process only)
 
     # ======================================================== settings
 
@@ -228,12 +235,24 @@ class GameService(object):
     # ======================================================== contexts
 
     def challenge_state(self, challenge):
+        """"upcoming", "open" or "closed".
+
+        A coach's Open and Close buttons always win (``status`` "open" or
+        "closed"), because a Raspberry Pi without a clock battery can have the
+        wrong time. Set times are only used when no button has been pressed,
+        except that a set closing time still closes an opened challenge.
+        """
+        status = getattr(challenge, "status", "auto") or "auto"
+        if status == "closed":
+            return "closed"
         now = self.now()
-        if challenge.opens_at and now < challenge.opens_at:
-            return "upcoming"
         if challenge.closes_at and now >= challenge.closes_at:
             return "closed"
-        return "open"
+        if status == "open":
+            return "open"
+        if challenge.opens_at and now >= challenge.opens_at:
+            return "open"
+        return "upcoming"
 
     def _challenge_for(self, game, player, challenge_id):
         c = self.store.challenge_get(challenge_id)
@@ -342,14 +361,28 @@ class GameService(object):
             "seconds": round(attempt.seconds, 1) if attempt.seconds is not None else None,
         }
 
+    def _elapsed(self, attempt):
+        """Seconds since the attempt started, without counting clock jumps when possible.
+
+        The jump-free clock is used for attempts started since the server last
+        started (nearly all of them). Older ones fall back to the normal clock,
+        never counting less than 0 or more than RESUME_HOURS.
+        """
+        start = self._started.get(attempt.id)
+        if start is not None:
+            return max(0.0, self.monotonic() - start)
+        wall = (self.now() - attempt.started_at).total_seconds()
+        return min(max(0.0, wall), RESUME_HOURS * 3600.0)
+
     def _close(self, attempt, status):
         attempt.status = status
+        attempt.seconds = self._elapsed(attempt)
         attempt.finished_at = self.now()
-        attempt.seconds = (attempt.finished_at - attempt.started_at).total_seconds()
+        self._started.pop(attempt.id, None)
         self.store.attempt_save(attempt)
 
     def _over_time(self, attempt, limit):
-        return limit and (self.now() - attempt.started_at).total_seconds() > limit + TIME_GRACE_SECONDS
+        return limit and self._elapsed(attempt) > limit + TIME_GRACE_SECONDS
 
     def _open_attempt(self, game, player, attempt_id):
         attempt = self.store.attempt_get(attempt_id)
@@ -383,7 +416,7 @@ class GameService(object):
         # Pick up an unfinished attempt where the player left it, and close older ones.
         open_attempts = sorted([a for a in mine if a.status == "started" and not a.voided], key=lambda a: a.number)
         for a in open_attempts:
-            age = (self.now() - a.started_at).total_seconds()
+            age = self._elapsed(a)
             if resume and a is open_attempts[-1] and not self._over_time(a, ctx.time_limit) and age < RESUME_HOURS * 3600:
                 public = a.public
                 if is_race:
@@ -428,6 +461,9 @@ class GameService(object):
             events=[],
             detail={},
         )
+        self._started[attempt.id] = self.monotonic()
+        while len(self._started) > 10000:  # keep memory small: forget the oldest
+            self._started.popitem(last=False)
         return {
             "attempt": self._attempt_info(attempt, mine + [attempt], ctx.counts),
             "public": public,
@@ -455,7 +491,7 @@ class GameService(object):
                 raise PlatformError(str(e), e.code)
             except wiki.WikiError as e:
                 raise PlatformError(str(e), "no_article", 409)
-        elapsed = (self.now() - attempt.started_at).total_seconds()
+        elapsed = self._elapsed(attempt)
         attempt.events = events + [{"t": round(elapsed, 1), "type": kind, "data": logged}]
         self.store.attempt_save(attempt)
         return reply
@@ -637,6 +673,7 @@ class GameService(object):
             "opens_at": _iso(c.opens_at),
             "closes_at": _iso(c.closes_at),
             "state": self.challenge_state(c),
+            "status": getattr(c, "status", "auto") or "auto",
             "counts": c.counts,
             "time_limit": c.time_limit,
             "can_manage": viewer.can_manage(c.class_id),
@@ -677,7 +714,7 @@ class GameService(object):
             state = self.challenge_state(c)
             if state == "upcoming" and not manage:
                 continue
-            if state == "closed" and not include_old and c.closes_at < now - timedelta(days=RECENT_DAYS):
+            if state == "closed" and not include_old and (c.closes_at or now) < now - timedelta(days=RECENT_DAYS):
                 continue
             info = self.challenge_public(game, c, viewer)
             if mine:
@@ -707,14 +744,34 @@ class GameService(object):
         except (TypeError, ValueError):
             time_limit = 0
             errors["time_limit"] = "The time limit must be 0 to 240 minutes."
-        opens_at, closes_at = parse_time(data.get("opens_at")), parse_time(data.get("closes_at"))
-        if data.get("opens_at") and opens_at is None:
-            errors["opens_at"] = "That isn't a date and time."
-        if data.get("closes_at") and closes_at is None:
-            errors["closes_at"] = "That isn't a date and time."
-        opens_at = opens_at or self.now()
-        if closes_at is not None and closes_at <= opens_at:
-            errors["closes_at"] = "The challenge must close after it opens."
+        # When to open: "now", "button" (when the coach presses Open) or "time".
+        # When to close: "button" (when the coach presses Close) or "time".
+        # "Now" uses this server's clock, so it works even if the coach's device
+        # and the server disagree about the time.
+        opens, closes = data.get("opens") or "now", data.get("closes") or "button"
+        now = self.now()
+        status, opens_at, closes_at = "auto", None, None
+        if opens == "now":
+            status, opens_at = "open", now
+        elif opens == "time":
+            opens_at = parse_time(data.get("opens_at"))
+            if opens_at is None:
+                errors["opens_at"] = "Choose the date and time to open."
+        elif opens != "button":
+            errors["opens"] = "Choose when the challenge opens."
+        if closes == "time":
+            closes_at = parse_time(data.get("closes_at"))
+            if closes_at is None:
+                errors["closes_at"] = "Choose the date and time to close."
+            elif opens == "time" and opens_at is not None and closes_at <= opens_at:
+                errors["closes_at"] = "The challenge must close after it opens."
+            elif closes_at <= now:
+                errors["closes_at"] = (
+                    "That time has already passed by this server's clock (%s UTC). If the server's clock "
+                    "is wrong, use the Close button instead." % now.strftime("%Y-%m-%d %H:%M")
+                )
+        elif closes != "button":
+            errors["closes"] = "Choose when the challenge closes."
         values, setting_errors = clean_settings(game.manifest.settings, data.get("settings") or {})
         errors.update(setting_errors)
         existing = None
@@ -730,9 +787,11 @@ class GameService(object):
             errors.update(race_errors)
         if errors:
             raise PlatformError(" ".join(errors.values()), "invalid_challenge", fields=errors)
+        if existing is not None and opens == "now" and self.challenge_state(existing) == "open":
+            opens_at = existing.opens_at or opens_at  # already open: keep when it opened
         fields = dict(
             title=title, class_id=class_id, class_name=class_names[class_id], settings=values, counts=counts,
-            time_limit=time_limit, opens_at=opens_at, closes_at=closes_at,
+            time_limit=time_limit, opens_at=opens_at, closes_at=closes_at, status=status,
         )
         if existing is None:
             c = self.store.challenge_create(
@@ -765,6 +824,25 @@ class GameService(object):
             self.store.challenge_set_best(challenge_id, best)
 
         self.background(work)
+
+    def open_or_close_challenge(self, game, coach, challenge_id, action):
+        """The Open and Close buttons. They use this server's clock only to record when."""
+        c = self.store.challenge_get(challenge_id)
+        if c is None or c.game_key != game.key or not coach.can_manage(c.class_id) or c.facility_id != coach.facility_id:
+            raise PlatformError("That challenge doesn't exist.", "not_found", 404)
+        now = self.now()
+        if action == "open":
+            c.status = "open"
+            c.opens_at = c.opens_at if c.opens_at and c.opens_at <= now else now
+            if c.closes_at and c.closes_at <= now:
+                c.closes_at = None  # reopening: forget a closing time that has passed
+        elif action == "close":
+            c.status = "closed"
+            c.closes_at = now
+        else:
+            raise PlatformError("Unknown action.", "bad_request")
+        self.store.challenge_save(c)
+        return self.challenge_public(game, c, coach)
 
     def delete_challenge(self, game, coach, challenge_id):
         c = self.store.challenge_get(challenge_id)
