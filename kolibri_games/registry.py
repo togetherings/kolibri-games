@@ -215,8 +215,12 @@ class GameEntry(object):
         }
 
 
-def check(manifest, source):
-    """Reasons this device can't run a Free-play Game (empty list = playable)."""
+def check(manifest, source, with_data=True):
+    """Reasons this device can't run a Free-play Game (empty list = playable).
+
+    with_data=False leaves out the data the game needs from the device (photo
+    packs, Wikipedia), for checking a game on a computer that doesn't have it.
+    """
     if manifest.is_classroom:
         return [
             "This is a Classroom Game. Classroom Games are HTML5 apps: add its .zip to a channel "
@@ -229,7 +233,7 @@ def check(manifest, source):
             % (manifest.requires_platform, __version__)
         )
     configured = data_sources()
-    for d in manifest.data:
+    for d in manifest.data if with_data else []:
         if not d.get("required", True):
             continue
         if d["name"] == "photo-packs":

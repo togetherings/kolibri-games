@@ -22,6 +22,8 @@
   off when the clock jumps (for example when the Pi reaches the internet).
 - **Installing Free-play Games:** device administrators install, update, roll back and remove
   games on the Setup page. Games are zips (made with `kolibri-games-pack` or any zip tool).
+  `kolibri-games-pack` checks a game without needing the data it uses on a device (photo packs,
+  Wikipedia), so it works on any computer.
 - The Wikipedia file for Wiki BLAZE is chosen on the Setup page.
 - Free-play Games are no longer ZIM files, and rule checkers are gone: games report their own
   scores, and impossible scores are refused. The "unchecked" label is gone too.
