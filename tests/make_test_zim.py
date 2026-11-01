@@ -52,7 +52,12 @@ def build(output):
         redirects = json.load(f)
     with Creator(output).config_indexing(False, "eng") as c:
         c.set_mainpath("Cat")
-        c.add_illustration(48, _png48())
+        try:
+            c.add_illustration(48, _png48())  # libzim up to 3.7
+        except TypeError:
+            # Newer libzim changed this call. The icon only matters to Kiwix,
+            # not to Wiki BLAZE, so a test file can do without it.
+            pass
         for name, value in {"Name": "test_wiki_en", "Title": "Tiny wiki", "Description": "A tiny wiki for tests",
                             "Language": "eng", "Creator": "Kolibri Games", "Publisher": "Kolibri Games",
                             "Date": "2026-10-28"}.items():
