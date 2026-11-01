@@ -99,6 +99,26 @@ def test_places_are_spread_over_countries(tmp_path):
     assert len(refs) == 5 and len(countries) == 5  # 5 countries in the pack, so one photo from each
 
 
+def test_bigger_countries_come_up_more_often(tmp_path):
+    import random
+
+    make(str(tmp_path))
+    packs = photos.find_packs(str(tmp_path)).values()
+    countries = {"SLE": {"weight": 1}, "LBR": {"weight": 1}, "GIN": {"weight": 1}, "GHA": {"weight": 1},
+                 "CIV": {"weight": 20}}
+    rng = random.Random(4)
+    firsts = {}
+    for _ in range(2000):
+        ref = photoguess.pick_places(photoguess.places_on_map(packs, countries, "world"), 1, rng, countries)[0]
+        firsts[ref] = firsts.get(ref, 0) + 1
+    civ = firsts.get("test-west-africa/0006", 0)  # Abidjan, the only place in Côte d'Ivoire
+    assert civ > 1500, firsts  # weight 20 of 24: about 83% of one-photo games
+    # Without weights, every country is equally likely, however many photos it has.
+    sle = sum(photoguess.pick_places(photoguess.places_on_map(packs, countries, "world"), 1, rng)[0].endswith(("0001", "0002"))
+              for _ in range(2000))
+    assert 300 < sle < 500  # 1 in 5 countries
+
+
 def test_the_game_needs_photo_packs(tmp_path):
     os.environ["KOLIBRI_GAMES_DATA_PHOTO_PACKS"] = str(tmp_path)
     try:

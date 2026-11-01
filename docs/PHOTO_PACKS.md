@@ -120,6 +120,11 @@ and continents it has land in:
 "continents": ["africa"]}, ...}`. Only countries in this file can be guessed, and photos from
 other places (for example a disputed area the game leaves out) are never picked.
 
+A country can also have a `weight` (default 1): how often it comes up, compared with the others.
+BeaconHunt uses the square root of each country's area, so Russia comes up about 80 times as
+often as Luxembourg, not 6,600 times (by area) or equally often. How many photos a pack has for a
+country doesn't change how often it comes up.
+
 The game plays like this:
 
 ```js

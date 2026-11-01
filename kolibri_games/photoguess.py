@@ -89,18 +89,31 @@ def places_on_map(packs, countries, map_id):
                 yield pack, place
 
 
-def pick_places(found, count, rng=random):
+def pick_places(found, count, rng=random, countries=None):
     """``count`` place references ("pack/place") spread over as many countries as possible.
 
-    ``found`` is (pack, place) pairs, as from places_on_map().
+    ``found`` is (pack, place) pairs, as from places_on_map(). Countries are
+    drawn by their "weight" in the countries file (BeaconHunt: the square root
+    of the area, so big countries come up more often than tiny ones, but
+    every country comes up sometimes); without weights, all are equally likely.
+    How many photos a country has doesn't matter.
     """
     by_country = {}
     for pack, place in found:
         by_country.setdefault(place["country"], []).append("%s/%s" % (pack.id, place["id"]))
     if not by_country:
         raise GuessError("There are no photos for this map on this device.", "no_photos")
-    countries = sorted(by_country)
-    rng.shuffle(countries)
+    info = countries or {}
+
+    def weight(code):
+        try:
+            return max(1e-6, float(info.get(code, {}).get("weight") or 1))
+        except (TypeError, ValueError, AttributeError):
+            return 1.0
+
+    # A weighted shuffle: each country's key is random ** (1 / weight), highest first
+    # (Efraimidis and Spirakis), so heavier countries tend to come earlier.
+    countries = sorted(sorted(by_country), key=lambda c: rng.random() ** (1.0 / weight(c)), reverse=True)
     chosen = []
     # Take one place from each country in turn, so a game of 5 visits 5 countries when it can.
     while len(chosen) < count and any(by_country[c] for c in countries):

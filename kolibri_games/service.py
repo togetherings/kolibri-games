@@ -417,7 +417,7 @@ class GameService(object):
             return ctx.challenge.settings["_places"]
         hunt = self.hunt(game, ctx.settings)
         try:
-            return photoguess.pick_places(hunt.places(), self._rounds(ctx.settings))
+            return photoguess.pick_places(hunt.places(), self._rounds(ctx.settings), countries=hunt.countries)
         except photoguess.GuessError as e:
             raise PlatformError(str(e), e.code, 409)
 
@@ -913,7 +913,8 @@ class GameService(object):
                 else:
                     hunt = self.hunt(game, values)
                     try:
-                        values["_places"] = photoguess.pick_places(hunt.places(), self._rounds(values))
+                        values["_places"] = photoguess.pick_places(hunt.places(), self._rounds(values),
+                                                                    countries=hunt.countries)
                     except photoguess.GuessError as e:
                         errors["map"] = str(e)
         if errors:
