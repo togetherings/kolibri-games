@@ -11,8 +11,9 @@
 - **Photo guessing, for BeaconHunt:** a `photo-guess` service and photo packs (one per region of
   the world, copied into the photo-packs folder and listed on the Setup page). The server picks
   the photos, keeps where they were taken hidden until the learner guesses, removes GPS data from
-  the photos, and scores each country guess by distance. In a challenge, everyone gets the same
-  photos. See `docs/PHOTO_PACKS.md`.
+  the photos, and scores each guess. Country mode: the right country, a neighbouring one, the same
+  region or the same continent. Location mode: by distance. Games play on the whole world or on
+  one continent's map. In a challenge, everyone gets the same photos. See `docs/PHOTO_PACKS.md`.
 - **Challenges:** coaches set a game up for a class with its own settings, time limit and
   scoreboard. Coaches open and close a challenge with buttons, or at set times. Learners see their
   classes' challenges on the game card.

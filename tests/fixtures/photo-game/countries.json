@@ -1,8 +1,11 @@
 {
-  "SLE": {"name": "Sierra Leone", "lat": 8.56, "lon": -11.79, "sub": "Western Africa"},
-  "LBR": {"name": "Liberia", "lat": 6.45, "lon": -9.43, "sub": "Western Africa"},
-  "GIN": {"name": "Guinea", "lat": 10.44, "lon": -10.94, "sub": "Western Africa"},
-  "GHA": {"name": "Ghana", "lat": 7.95, "lon": -1.03, "sub": "Western Africa"},
-  "CIV": {"name": "Côte d'Ivoire", "lat": 7.63, "lon": -5.55, "sub": "Western Africa"},
-  "FRA": {"name": "France", "lat": 46.6, "lon": 2.4, "sub": "Western Europe"}
+  "SLE": {"name": "Sierra Leone", "lat": 8.56, "lon": -11.79, "regions": ["Western Africa"], "continents": ["africa"]},
+  "LBR": {"name": "Liberia", "lat": 6.45, "lon": -9.43, "regions": ["Western Africa"], "continents": ["africa"]},
+  "GIN": {"name": "Guinea", "lat": 10.44, "lon": -10.94, "regions": ["Western Africa"], "continents": ["africa"]},
+  "GHA": {"name": "Ghana", "lat": 7.95, "lon": -1.03, "regions": ["Western Africa"], "continents": ["africa"]},
+  "CIV": {"name": "Côte d'Ivoire", "lat": 7.63, "lon": -5.55, "regions": ["Western Africa"], "continents": ["africa"]},
+  "KEN": {"name": "Kenya", "lat": 0.5, "lon": 37.9, "regions": ["Eastern Africa"], "continents": ["africa"]},
+  "FRA": {"name": "France", "lat": 46.6, "lon": 2.4, "regions": ["Western Europe", "Eastern Africa", "Caribbean", "South America"],
+          "continents": ["europe", "africa", "north-america", "south-america"]},
+  "DEU": {"name": "Germany", "lat": 51.1, "lon": 10.4, "regions": ["Western Europe"], "continents": ["europe"]}
 }
