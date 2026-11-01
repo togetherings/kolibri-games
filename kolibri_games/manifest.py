@@ -432,6 +432,15 @@ def validate(data):
                 problems.append("Games that use photo-guess need photos.maps: a list of {id, title, scale_km}.")
             elif "world" not in [m["id"] for m in maps]:
                 problems.append("photos.maps needs a map with the id 'world'.")
+            weights = photos.get("weights", {}) if isinstance(photos, dict) else {}
+            if not isinstance(weights, dict) or not all(
+                k in ("country", "location") and isinstance(v, (int, float)) and 0 <= v <= 4 for k, v in weights.items()
+            ):
+                problems.append("photos.weights must give each mode (country, location) a power from 0 to 4.")
+            for key in ("max_share", "max_photo_ratio"):
+                v = photos.get(key) if isinstance(photos, dict) else None
+                if v is not None and (not isinstance(v, (int, float)) or v <= 0):
+                    problems.append("photos.%s must be a number above 0." % key)
             names = [d.get("name") for d in sources if isinstance(d, dict)] if isinstance(sources, list) else []
             if "photo-packs" not in names:
                 problems.append("Games that use photo-guess must list the 'photo-packs' data source.")

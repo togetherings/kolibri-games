@@ -119,6 +119,37 @@ def test_bigger_countries_come_up_more_often(tmp_path):
     assert 300 < sle < 500  # 1 in 5 countries
 
 
+def test_caps_and_powers():
+    weights = {"BIG": 100.0, "MID": 10.0, "SMALL": 1.0}
+    photos_ = {"BIG": 10, "MID": 45, "SMALL": 45}
+    plain = photoguess.capped_weights(weights, photos_)
+    assert abs(plain["BIG"] - 100 / 111.0) < 1e-9
+    # No country over half of the rounds: BIG's extra goes to the others by weight.
+    capped = photoguess.capped_weights(weights, photos_, max_share=0.5)
+    assert abs(capped["BIG"] - 0.5) < 1e-9 and abs(capped["MID"] - 0.5 * 10 / 11) < 1e-9
+    # BIG has 10% of the photos, so with a ratio of 2 it gets at most 20% of the rounds.
+    few = photoguess.capped_weights(weights, photos_, max_photo_ratio=2)
+    assert abs(few["BIG"] - 0.2) < 1e-9 and abs(sum(few.values()) - 1) < 1e-9
+
+
+def test_place_mode_favours_big_countries_more(hunt):
+    import random
+
+    game, service, clock, amina, *_ = hunt
+    countries = dict(service.countries(game))
+    countries["CIV"] = dict(countries["CIV"], weight=4)  # four times as heavy as the others (weight 1)
+    rng = random.Random(1)
+    packs = list(service.photo_packs(game).values())
+
+    def civ_share(mode):
+        h = photoguess.Hunt(packs, countries, mode=mode, options={"weights": {"country": 1, "location": 2}})
+        return sum(h.pick(1, rng)[0].endswith("/0006") for _ in range(3000)) / 3000.0
+
+    country, place = civ_share("country"), civ_share("location")
+    assert 0.42 < country < 0.58  # 4 / (4 + 4 x 1) = 50%
+    assert 0.74 < place < 0.86    # 16 / (16 + 4) = 80%
+
+
 def test_the_game_needs_photo_packs(tmp_path):
     os.environ["KOLIBRI_GAMES_DATA_PHOTO_PACKS"] = str(tmp_path)
     try:

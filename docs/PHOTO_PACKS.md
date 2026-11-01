@@ -121,9 +121,26 @@ and continents it has land in:
 other places (for example a disputed area the game leaves out) are never picked.
 
 A country can also have a `weight` (default 1): how often it comes up, compared with the others.
-BeaconHunt uses the square root of each country's area, so Russia comes up about 80 times as
-often as Luxembourg, not 6,600 times (by area) or equally often. How many photos a pack has for a
-country doesn't change how often it comes up.
+How many photos a pack has for a country doesn't change how often it comes up, except through the
+caps below.
+
+**How often countries come up** is set in the manifest's `photos`:
+
+```json
+"weights": {"country": 1, "location": 2},
+"max_share": 0.04,
+"max_photo_ratio": 3
+```
+
+* `weights`: each mode uses the countries' weights raised to this power. BeaconHunt's weight is
+  (area × population)^¼. Country mode uses it as it is, so small countries still come up
+  regularly; place mode squares it, so big, populous countries come up much more often, roughly in
+  proportion to how much inhabited land they have.
+* `max_share`: no country gets more than this share of the rounds (0.04: 4%).
+* `max_photo_ratio`: no country comes up more than this many times as often as its share of the
+  photos on the device, so a country with few photos doesn't keep repeating them.
+
+What a capped country loses goes to the others.
 
 The game plays like this:
 

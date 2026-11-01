@@ -395,7 +395,8 @@ class GameService(object):
         game_map = photoguess.map_info(game.manifest.photos.get("maps"), settings.get("map"))
         if game_map is None:
             raise PlatformError("This game has no map called %s." % settings.get("map"), "no_photos", 409)
-        return photoguess.Hunt(packs, self.countries(game), game_map, settings.get("mode") or "country")
+        return photoguess.Hunt(packs, self.countries(game), game_map, settings.get("mode") or "country",
+                               game.manifest.photos)
 
     def _rounds(self, settings):
         try:
@@ -417,7 +418,7 @@ class GameService(object):
             return ctx.challenge.settings["_places"]
         hunt = self.hunt(game, ctx.settings)
         try:
-            return photoguess.pick_places(hunt.places(), self._rounds(ctx.settings), countries=hunt.countries)
+            return hunt.pick(self._rounds(ctx.settings))
         except photoguess.GuessError as e:
             raise PlatformError(str(e), e.code, 409)
 
@@ -913,8 +914,7 @@ class GameService(object):
                 else:
                     hunt = self.hunt(game, values)
                     try:
-                        values["_places"] = photoguess.pick_places(hunt.places(), self._rounds(values),
-                                                                    countries=hunt.countries)
+                        values["_places"] = hunt.pick(self._rounds(values))
                     except photoguess.GuessError as e:
                         errors["map"] = str(e)
         if errors:

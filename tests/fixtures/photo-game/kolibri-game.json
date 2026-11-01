@@ -14,7 +14,10 @@
       {"id": "world", "title": "The whole world", "scale_km": 1500},
       {"id": "africa", "title": "Africa", "scale_km": 600},
       {"id": "europe", "title": "Europe", "scale_km": 300}
-    ]
+    ],
+    "weights": {"country": 1, "location": 2},
+    "max_share": 0.5,
+    "max_photo_ratio": 3
   },
   "scoring": {"label": "Points", "order": "desc", "counts": "best", "tiebreak": "seconds", "min": 0, "max": 10000},
   "settings": [

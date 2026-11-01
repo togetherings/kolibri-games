@@ -29,6 +29,13 @@ There are two modes (the game's "mode" setting):
 The game chooses a **map**: the whole world (every photo) or one of the
 game's maps (photos whose continent is that map's id). Maps come from the
 game's manifest: "photos": {"maps": [{"id", "title", "scale_km"}]}.
+
+**How often each country comes up**: by its "weight" in the countries file,
+raised to a power for each mode ("photos": {"weights": {"country": 1,
+"location": 2}}), with caps: "max_share" (the most rounds any one country
+gets) and "max_photo_ratio" (no country comes up much more often than its
+share of the photos, so countries with few photos don't repeat). See
+pick_places().
 """
 import math
 import random
@@ -89,14 +96,55 @@ def places_on_map(packs, countries, map_id):
                 yield pack, place
 
 
-def pick_places(found, count, rng=random, countries=None):
+def capped_weights(weights, photo_counts, max_share=None, max_photo_ratio=None):
+    """Each country's weight after the caps, as shares that add up to 1.
+
+    * max_share: no country gets more than this share of the rounds (0.04: 4%).
+    * max_photo_ratio: no country comes up more than this many times as often
+      as its share of the photos (3: a country with 1% of the photos gets at
+      most 3% of the rounds), so countries with few photos don't repeat.
+
+    What a capped country loses goes to the others, in proportion to their
+    weights (and so on, until no one is over their cap).
+    """
+    total_photos = float(sum(photo_counts.values())) or 1.0
+    caps = {}
+    for c in weights:
+        cap = 1.0
+        if max_share:
+            cap = min(cap, max_share)
+        if max_photo_ratio:
+            cap = min(cap, max_photo_ratio * photo_counts.get(c, 0) / total_photos)
+        caps[c] = cap
+    shares, fixed = {}, set()
+    while True:
+        free = [c for c in weights if c not in fixed]
+        left = 1.0 - sum(shares[c] for c in fixed)
+        total = sum(weights[c] for c in free)
+        if not free or total <= 0 or left <= 0:
+            break
+        over = []
+        for c in free:
+            shares[c] = left * weights[c] / total
+            if shares[c] > caps[c]:
+                over.append(c)
+        if not over:
+            break
+        for c in over:
+            shares[c] = caps[c]
+            fixed.add(c)
+    return shares
+
+
+def pick_places(found, count, rng=random, countries=None, power=1.0, max_share=None, max_photo_ratio=None):
     """``count`` place references ("pack/place") spread over as many countries as possible.
 
     ``found`` is (pack, place) pairs, as from places_on_map(). Countries are
-    drawn by their "weight" in the countries file (BeaconHunt: the square root
-    of the area, so big countries come up more often than tiny ones, but
-    every country comes up sometimes); without weights, all are equally likely.
-    How many photos a country has doesn't matter.
+    drawn by their "weight" in the countries file raised to ``power``, then
+    capped (see capped_weights). BeaconHunt's weight mixes area and
+    population; country mode uses it as it is (power 1), place mode squared
+    (power 2), so in place mode big, populous countries come up much more
+    often. Without weights, all countries are equally likely.
     """
     by_country = {}
     for pack, place in found:
@@ -107,17 +155,20 @@ def pick_places(found, count, rng=random, countries=None):
 
     def weight(code):
         try:
-            return max(1e-6, float(info.get(code, {}).get("weight") or 1))
-        except (TypeError, ValueError, AttributeError):
+            return max(1e-9, float(info.get(code, {}).get("weight") or 1) ** float(power))
+        except (TypeError, ValueError, AttributeError, OverflowError):
             return 1.0
 
-    # A weighted shuffle: each country's key is random ** (1 / weight), highest first
-    # (Efraimidis and Spirakis), so heavier countries tend to come earlier.
-    countries = sorted(sorted(by_country), key=lambda c: rng.random() ** (1.0 / weight(c)), reverse=True)
+    shares = capped_weights({c: weight(c) for c in by_country}, {c: len(v) for c, v in by_country.items()},
+                            max_share, max_photo_ratio)
+    # A weighted shuffle: each country's key is random ** (1 / share), highest first
+    # (Efraimidis and Spirakis), so countries with bigger shares tend to come earlier.
+    order = sorted(sorted(by_country), key=lambda c: rng.random() ** (1.0 / max(1e-12, shares.get(c, 1e-12))),
+                   reverse=True)
     chosen = []
     # Take one place from each country in turn, so a game of 5 visits 5 countries when it can.
-    while len(chosen) < count and any(by_country[c] for c in countries):
-        for c in countries:
+    while len(chosen) < count and any(by_country[c] for c in order):
+        for c in order:
             if by_country[c] and len(chosen) < count:
                 chosen.append(by_country[c].pop(rng.randrange(len(by_country[c]))))
     rng.shuffle(chosen)
@@ -127,14 +178,22 @@ def pick_places(found, count, rng=random, countries=None):
 class Hunt(object):
     """One game's rules: the photo packs, the countries the map knows, the map and the mode."""
 
-    def __init__(self, packs, countries, game_map=None, mode="country"):
+    def __init__(self, packs, countries, game_map=None, mode="country", options=None):
         self.packs = {p.id: p for p in packs}
-        self.countries = countries  # code -> {"name", "lat", "lon", "regions", "continents"}
+        self.countries = countries  # code -> {"name", "lat", "lon", "regions", "continents", "weight"}
         self.map = game_map or map_info(None, WORLD)
         self.mode = mode if mode in MODES else "country"
+        self.options = options or {}  # the manifest's "photos": weights, max_share, max_photo_ratio
 
     def places(self):
         return places_on_map(self.packs.values(), self.countries, self.map["id"])
+
+    def pick(self, count, rng=random):
+        """The places for a new game, by the game's weights for this mode and its caps."""
+        powers = self.options.get("weights") or {}
+        return pick_places(self.places(), count, rng, self.countries, power=powers.get(self.mode, 1),
+                           max_share=self.options.get("max_share"),
+                           max_photo_ratio=self.options.get("max_photo_ratio"))
 
     def place(self, ref):
         pack_id, _, place_id = ref.partition("/")
