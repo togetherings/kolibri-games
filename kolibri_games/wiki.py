@@ -25,6 +25,7 @@ the server stays responsive.
 """
 import bisect
 import json
+import logging
 import os
 import posixpath
 import random
@@ -37,6 +38,8 @@ from html.parser import HTMLParser
 from urllib.parse import quote, unquote
 
 from .sources import guess_type
+
+logger = logging.getLogger(__name__)
 
 #: Where article images are served inside a game (see views.play_file).
 FILE_PREFIX = "__wiki__/"
@@ -185,14 +188,20 @@ class ZimWiki(WikiSource):
         raise WikiError("Couldn't find a random article in the Wikipedia file.")
 
     def suggest(self, text, limit=10):
+        found = []
         with self.lock:
             try:
                 from libzim.suggestion import SuggestionSearcher
 
                 results = SuggestionSearcher(self.archive).suggest(text)
-                return list(results.getResults(0, limit))
+                found = list(results.getResults(0, limit))
             except Exception:
-                return []
+                logger.warning("Kolibri Games: title suggestions failed for %r", text, exc_info=True)
+        if not found:
+            # Some ZIM files (or libzim versions) give no suggestions: at least offer an exact title.
+            exact = self.find(text)
+            found = [exact[0]] if exact else []
+        return found
 
 
 class FolderWiki(WikiSource):
