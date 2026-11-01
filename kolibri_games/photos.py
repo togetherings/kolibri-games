@@ -13,7 +13,9 @@ choose another on the Setup page). One pack per region, for example
                      "lon": -13.23, "country": "SLE", "pano": true,
                      "credit": {"author": "...", "source": "Mapillary",
                                 "url": "...", "license": "CC BY-SA 4.0",
-                                "captured": "2021-05-01"}}, ...]
+                                "captured": "2021-05-01"},
+                     "region": "Western Africa", "continent": "africa",
+                     "near": ["GIN", "LBR"]}, ...]
     photos/        the photos (JPEG)
     LICENSE.txt    the photos' license
     CREDITS.txt    who took each photo
@@ -77,6 +79,11 @@ class PhotoPack(object):
                             "country": str(p["country"]),
                             "pano": bool(p.get("pano", False)),
                             "credit": p.get("credit") if isinstance(p.get("credit"), dict) else {},
+                            # For country-mode scoring (see photoguess.py): the photo's region and
+                            # continent, and the countries that count as neighbours for it.
+                            "region": str(p.get("region") or ""),
+                            "continent": str(p.get("continent") or ""),
+                            "near": [str(c) for c in p.get("near") or [] if isinstance(c, str)],
                         }
                     except (KeyError, TypeError, ValueError):
                         continue

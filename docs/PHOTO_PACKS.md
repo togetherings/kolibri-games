@@ -2,8 +2,8 @@
 
 Photo packs hold the street photos for games that use the `photo-guess` service, such as
 [BeaconHunt](https://github.com/togetherings/beacon-hunt). Each pack covers one region of the
-world (for example West Africa). A game can use one region, or every pack on the device at once
-(the "whole world").
+world (for example West Africa). A game plays photos from every pack on the device, either on
+the whole world map or on one continent's map.
 
 Packs are made with BeaconHunt's pack tool, on a computer with internet. They're too big to go
 through the Setup page's install button, so copy them onto the device (for example with a USB
@@ -61,13 +61,25 @@ are three-letter ISO codes, as in the game's countries file.
       "url": "https://www.mapillary.com/app/?pKey=123456789",
       "license": "CC BY-SA 4.0",
       "captured": "2023-05-01"
-    }
+    },
+    "region": "Western Africa",
+    "continent": "africa",
+    "near": ["GIN", "LBR"]
   }
 ]
 ```
 
 `pano` is `true` for a 360° photo (equirectangular, twice as wide as it is tall), `false` for an
 ordinary photo.
+
+The last three fields are for scoring country guesses, and the pack tool works them out for each
+photo from where it was taken:
+
+* `region`: the UN sub-region of the spot (a photo in Hawaii is in Polynesia, though the country
+  is the United States).
+* `continent`: the id of the game's map the photo belongs to.
+* `near`: the countries that count as neighbours for this photo: ones that border its country (on
+  land, or across less than about 150 km of water) and are within about 500 km of it.
 
 ## How the photos are kept secret
 
@@ -83,30 +95,75 @@ A game that uses photo packs declares, in its `kolibri-game.json`:
 ```json
 "service": "photo-guess",
 "data": [{"name": "photo-packs"}],
-"photos": {"countries": "map/countries.json"},
+"photos": {
+  "countries": "map/countries.json",
+  "maps": [
+    {"id": "world", "title": "The whole world", "scale_km": 1500},
+    {"id": "africa", "title": "Africa", "scale_km": 600}
+  ]
+},
 "settings": [
-  {"key": "region", "type": "photo_region", "label": "Region", "default": "world"},
+  {"key": "mode", "type": "choice", "label": "Guess", "default": "country",
+   "choices": [{"value": "country", "label": "The country"}, {"value": "location", "label": "The place"}]},
+  {"key": "map", "type": "photo_map", "label": "Map", "default": "world"},
   {"key": "rounds", "type": "integer", "label": "Rounds", "min": 1, "max": 10, "default": 5}
 ]
 ```
 
-The countries file maps each country code to its name and a point inside it:
-`{"SLE": {"name": "Sierra Leone", "lat": 8.56, "lon": -11.79}, ...}`. Wrong guesses are scored by
-the distance from the photo to that point.
+**Maps.** `world` plays every photo; another map plays the photos whose `continent` is its id.
+The settings form offers only the maps that have photos on the device. `scale_km` sets how
+strictly location guesses are scored on that map.
+
+**The countries file** maps each country code to its name, a point inside it, and the regions
+and continents it has land in:
+`{"SLE": {"name": "Sierra Leone", "lat": 8.56, "lon": -11.79, "regions": ["Western Africa"],
+"continents": ["africa"]}, ...}`. Only countries in this file can be guessed, and photos from
+other places (for example a disputed area the game leaves out) are never picked.
+
+A country can also have a `weight` (default 1): how often it comes up, compared with the others.
+How many photos a pack has for a country doesn't change how often it comes up, except through the
+caps below.
+
+**How often countries come up** is set in the manifest's `photos`:
+
+```json
+"weights": {"country": 1, "location": 2},
+"max_share": 0.04,
+"max_photo_ratio": 3
+```
+
+* `weights`: each mode uses the countries' weights raised to this power. BeaconHunt's weight is
+  (area × population)^¼. Country mode uses it as it is, so small countries still come up
+  regularly; place mode squares it, so big, populous countries come up much more often, roughly in
+  proportion to how much inhabited land they have.
+* `max_share`: no country gets more than this share of the rounds (0.04: 4%).
+* `max_photo_ratio`: no country comes up more than this many times as often as its share of the
+  photos on the device, so a country with few photos doesn't keep repeating them.
+
+What a capped country loses goes to the others.
 
 The game plays like this:
 
 ```js
 const start = await KG.start();
-// start.public: {rounds, round, photo: {url, pano}, results, total, done}
+// start.public: {mode, map, rounds, round, photo: {url, pano}, results, total, done}
 // show the photo: <img src="{photo.url}"> (relative to the game), or a 360° viewer if pano
-const reply = await KG.move("guess", { country: "SLE" });
-// reply.result: {correct, guess_name, answer_name, distance_km, points, lat, lon, credit}
+const reply = await KG.move("guess", { country: "SLE" });      // country mode
+const reply = await KG.move("guess", { lat: 8.5, lon: -13.2 }); // location mode
+// reply.result: {answer, answer_name, lat, lon, credit, points, and
+//   country mode: guess, guess_name, tier ("right", "neighbour", "region", "continent", "none"), correct
+//   location mode: guess_lat, guess_lon, distance_km}
 // reply.photo: the next round's photo, until reply.done
 await KG.finish({});   // the server adds up the points
 ```
 
-Points per round: 5000 for the right country, otherwise up to 4000, less the further the guessed
-country is from the photo (4000 × e^(−distance / 800 km)).
+Points per round, out of 1000:
+
+* **Country mode:** the right country 1000, a neighbour (from the photo's `near`) 500, a country
+  with land in the photo's region 300, one on the photo's continent 100, anything else 0.
+* **Location mode:** 1000 × e^(−distance / scale_km), with the map's `scale_km`.
+
+The mode and map are kept with each attempt, so changing the settings doesn't change a game
+that's already going.
 
 In a challenge, every learner gets the same photos, picked when the coach saves the challenge.

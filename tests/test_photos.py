@@ -76,19 +76,78 @@ def test_hidden_jpeg_data_is_removed():
 
 
 def test_points_and_distances():
-    assert photoguess.points_for(True, 0) == 5000
-    assert photoguess.points_for(False, 0) == 4000
-    assert 2000 < photoguess.points_for(False, 500) < 2300
-    assert photoguess.points_for(False, 8000) == 0
+    countries = {"GIN": {"regions": ["Western Africa"], "continents": ["africa"]},
+                 "GHA": {"regions": ["Western Africa"], "continents": ["africa"]},
+                 "KEN": {"regions": ["Eastern Africa"], "continents": ["africa"]},
+                 "FRA": {"regions": ["Western Europe", "Eastern Africa"], "continents": ["europe", "africa"]},
+                 "DEU": {"regions": ["Western Europe"], "continents": ["europe"]}}
+    place = {"country": "SLE", "region": "Western Africa", "continent": "africa", "near": ["GIN", "LBR"]}
+    tiers = {c: photoguess.country_tier(c, place, countries) for c in ("SLE", "GIN", "GHA", "KEN", "FRA", "DEU")}
+    assert tiers == {"SLE": "right", "GIN": "neighbour", "GHA": "region", "KEN": "continent",
+                     "FRA": "continent", "DEU": "none"}  # France has land in Africa (Réunion, Mayotte)
+    assert [photoguess.TIER_POINTS[tiers[c]] for c in ("SLE", "GIN", "GHA", "KEN", "DEU")] == [1000, 500, 300, 100, 0]
+    assert photoguess.location_points(0, 1500) == 1000
+    assert photoguess.location_points(1500, 1500) == 368 and photoguess.location_points(300, 300) == 368
     assert 330 < photos.distance_km(8.48, -13.23, 6.32, -10.81) < 400  # Freetown to Monrovia, about 360 km
 
 
 def test_places_are_spread_over_countries(tmp_path):
     make(str(tmp_path))
     packs = photos.find_packs(str(tmp_path)).values()
-    refs = photoguess.pick_places(packs, 5)
+    refs = photoguess.pick_places(photoguess.places_on_map(packs, {c: {} for c in ("SLE", "LBR", "GIN", "GHA", "CIV")}, "world"), 5)
     countries = {photos.find_packs(str(tmp_path))["test-west-africa"].places[r.split("/")[1]]["country"] for r in refs}
     assert len(refs) == 5 and len(countries) == 5  # 5 countries in the pack, so one photo from each
+
+
+def test_bigger_countries_come_up_more_often(tmp_path):
+    import random
+
+    make(str(tmp_path))
+    packs = photos.find_packs(str(tmp_path)).values()
+    countries = {"SLE": {"weight": 1}, "LBR": {"weight": 1}, "GIN": {"weight": 1}, "GHA": {"weight": 1},
+                 "CIV": {"weight": 20}}
+    rng = random.Random(4)
+    firsts = {}
+    for _ in range(2000):
+        ref = photoguess.pick_places(photoguess.places_on_map(packs, countries, "world"), 1, rng, countries)[0]
+        firsts[ref] = firsts.get(ref, 0) + 1
+    civ = firsts.get("test-west-africa/0006", 0)  # Abidjan, the only place in Côte d'Ivoire
+    assert civ > 1500, firsts  # weight 20 of 24: about 83% of one-photo games
+    # Without weights, every country is equally likely, however many photos it has.
+    sle = sum(photoguess.pick_places(photoguess.places_on_map(packs, countries, "world"), 1, rng)[0].endswith(("0001", "0002"))
+              for _ in range(2000))
+    assert 300 < sle < 500  # 1 in 5 countries
+
+
+def test_caps_and_powers():
+    weights = {"BIG": 100.0, "MID": 10.0, "SMALL": 1.0}
+    photos_ = {"BIG": 10, "MID": 45, "SMALL": 45}
+    plain = photoguess.capped_weights(weights, photos_)
+    assert abs(plain["BIG"] - 100 / 111.0) < 1e-9
+    # No country over half of the rounds: BIG's extra goes to the others by weight.
+    capped = photoguess.capped_weights(weights, photos_, max_share=0.5)
+    assert abs(capped["BIG"] - 0.5) < 1e-9 and abs(capped["MID"] - 0.5 * 10 / 11) < 1e-9
+    # BIG has 10% of the photos, so with a ratio of 2 it gets at most 20% of the rounds.
+    few = photoguess.capped_weights(weights, photos_, max_photo_ratio=2)
+    assert abs(few["BIG"] - 0.2) < 1e-9 and abs(sum(few.values()) - 1) < 1e-9
+
+
+def test_place_mode_favours_big_countries_more(hunt):
+    import random
+
+    game, service, clock, amina, *_ = hunt
+    countries = dict(service.countries(game))
+    countries["CIV"] = dict(countries["CIV"], weight=4)  # four times as heavy as the others (weight 1)
+    rng = random.Random(1)
+    packs = list(service.photo_packs(game).values())
+
+    def civ_share(mode):
+        h = photoguess.Hunt(packs, countries, mode=mode, options={"weights": {"country": 1, "location": 2}})
+        return sum(h.pick(1, rng)[0].endswith("/0006") for _ in range(3000)) / 3000.0
+
+    country, place = civ_share("country"), civ_share("location")
+    assert 0.42 < country < 0.58  # 4 / (4 + 4 x 1) = 50%
+    assert 0.74 < place < 0.86    # 16 / (16 + 4) = 80%
 
 
 def test_the_game_needs_photo_packs(tmp_path):
@@ -108,7 +167,7 @@ def test_a_full_game_is_scored_by_the_server(hunt):
     started = service.start(game, amina)
     aid, public = started["attempt"]["id"], started["public"]
     assert public["rounds"] == 3 and public["round"] == 1 and public["photo"]["url"] == "__photos__/%d/0" % aid
-    assert "lat" not in str(public) and "country" not in str(public)  # nothing gives the answer away
+    assert "lat" not in str(public) and not any(c in str(public) for c in ("SLE", "LBR", "GIN", "GHA", "CIV"))  # no answers
     # Only rounds already reached can be fetched, and only by the player.
     assert service.attempt_photo(game, amina.id, aid, 0)[1] == "image/png"
     assert service.attempt_photo(game, amina.id, aid, 1) is None
@@ -118,14 +177,15 @@ def test_a_full_game_is_scored_by_the_server(hunt):
     total = 0
     for i in range(3):
         answer = place_of(service, aid, i)["country"]
-        guess = answer if i < 2 else "FRA"
+        guess = answer if i < 2 else "DEU"
         reply = service.move(game, amina, aid, "guess", {"country": guess})
         result = reply["result"]
         assert result["answer"] == answer and result["correct"] == (i < 2)
         assert result["credit"]["source"] == "Mapillary" and result["lat"]
         total += result["points"]
         assert reply["done"] == (i == 2)
-    assert result["points"] < 400  # France is far from West Africa
+    assert result["tier"] == "none" and result["points"] == 0  # Germany: not even the same continent
+    assert total == 2000
     with pytest.raises(PlatformError):
         service.move(game, amina, aid, "guess", {"country": "SLE"})
     done = service.finish(game, amina, aid, {"score": 999999})  # a claimed score is ignored
@@ -142,21 +202,45 @@ def test_finishing_early_is_refused_and_resuming_keeps_the_round(hunt):
     assert again["resumed"] and again["public"]["round"] == 2 and len(again["public"]["results"]) == 1
 
 
-def test_regions_and_settings(hunt):
+def test_maps_and_settings(hunt):
     game, service, clock, amina, ben, coach, folder = hunt
-    choices = service.schema(game, FAC)["game"][0]["choices"]
-    assert [c["value"] for c in choices] == ["world", "test-west-africa"]
-    service.save_settings(game, FAC, {}, {"region": "test-west-africa", "rounds": 2}, coach.id)
+    choices = service.schema(game, FAC)["game"][1]["choices"]
+    # Europe has no photos on this device, so it isn't offered.
+    assert choices == [{"value": "world", "label": "The whole world (6 photos)"},
+                       {"value": "africa", "label": "Africa (6 photos)"}]
+    service.save_settings(game, FAC, {}, {"map": "africa", "rounds": 2}, coach.id)
     assert service.start(game, amina, resume=False)["public"]["rounds"] == 2
-    with pytest.raises(PlatformError) as e:
-        service.save_settings(game, FAC, {}, {"region": "east-asia"}, coach.id)
-    assert "region" in e.value.fields
+    for bad in ("europe", "mars"):
+        with pytest.raises(PlatformError) as e:
+            service.save_settings(game, FAC, {}, {"map": bad}, coach.id)
+        assert "map" in e.value.fields
+
+
+def test_location_mode_scores_by_distance(hunt):
+    game, service, clock, amina, *_ = hunt
+    service.save_settings(game, FAC, {}, {"mode": "location", "map": "africa", "rounds": 3}, amina.id)
+    started = service.start(game, amina, resume=False)
+    aid = started["attempt"]["id"]
+    assert started["public"]["mode"] == "location"
+    with pytest.raises(PlatformError):
+        service.move(game, amina, aid, "guess", {"country": "SLE"})  # location mode needs a pin
+    place = place_of(service, aid, 0)
+    exact = service.move(game, amina, aid, "guess", {"lat": place["lat"], "lon": place["lon"]})["result"]
+    assert exact["distance_km"] == 0 and exact["points"] == 1000
+    place = place_of(service, aid, 1)
+    off = service.move(game, amina, aid, "guess", {"lat": place["lat"] + 2.7, "lon": place["lon"]})["result"]
+    assert 290 < off["distance_km"] < 310 and 600 < off["points"] < 620  # 300 km on the Africa map (scale 600 km)
+    # Changing the settings during a game doesn't change it.
+    service.save_settings(game, FAC, {}, {"mode": "country"}, amina.id)
+    service.move(game, amina, aid, "guess", {"lat": 0, "lon": 0})
+    done = service.finish(game, amina, aid, {})
+    assert done["attempt"]["detail"]["mode"] == "location" and "average_km" in done["attempt"]["detail"]
 
 
 def test_a_challenge_gives_everyone_the_same_hidden_photos(hunt):
     game, service, clock, amina, ben, coach, folder = hunt
     c = service.save_challenge(game, coach, {"title": "Coast", "class_id": CLASS_A,
-                                             "settings": {"region": "test-west-africa", "rounds": 4}}, {CLASS_A: "Class A"})
+                                             "settings": {"map": "africa", "rounds": 4}}, {CLASS_A: "Class A"})
     assert "_places" not in c["settings"]  # the picked places stay on the server
     assert "_places" not in str(service.context(game, amina, c["id"]).settings)
     a = service.start(game, amina, c["id"])["attempt"]["id"]
@@ -165,7 +249,7 @@ def test_a_challenge_gives_everyone_the_same_hidden_photos(hunt):
     assert len(service.store.attempt_get(a).state["places"]) == 4
     # Changing only the name keeps the same photos.
     again = service.save_challenge(game, coach, {"title": "Coast 2", "class_id": CLASS_A,
-                                                 "settings": {"region": "test-west-africa", "rounds": 4}},
+                                                 "settings": {"map": "africa", "rounds": 4}},
                                    {CLASS_A: "Class A"}, c["id"])
     assert service.store.challenge_get(again["id"]).settings["_places"] == service.store.attempt_get(a).state["places"]
 

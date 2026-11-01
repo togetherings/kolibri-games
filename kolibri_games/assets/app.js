@@ -881,7 +881,7 @@
       return { node: el("div", { class: "field check" }, [input, el("label", { for: id, text: field.label }), err]), input: input, field: field, err: err,
         read: function () { return input.checked; } };
     }
-    if (field.type === "choice" || field.type === "article_list" || field.type === "photo_region") {
+    if (field.type === "choice" || field.type === "article_list" || field.type === "photo_map") {
       input = el("select", { id: id });
       (field.choices || []).forEach(function (c, i) {
         input.appendChild(el("option", { value: String(i), text: c.label }));

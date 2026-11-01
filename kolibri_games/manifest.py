@@ -30,15 +30,16 @@ GAME_TYPES = ("free-play", "classroom")
 #: "wikipedia-race": the server reads Wikipedia articles for the game, checks
 #: every link the learner follows and works out the score (see wikirace.py).
 #: "photo-guess": the server picks street photos from photo packs, keeps where
-#: they were taken hidden, and scores each country guess (see photoguess.py).
+#: they were taken hidden, and scores each guess (see photoguess.py).
 SERVICES = ("wikipedia-race", "photo-guess")
+MAP_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,59}$")
 
 #: Setting types. "article" (a Wikipedia article title) and "article_list" (a
 #: list of allowed articles) are only for games that use "wikipedia-race".
-#: "photo_region" (a photo pack, or the whole world) is only for "photo-guess".
-SETTING_TYPES = ("integer", "number", "boolean", "choice", "text", "article", "article_list", "photo_region")
+#: "photo_map" (the whole world, or one of the game's maps) is only for "photo-guess".
+SETTING_TYPES = ("integer", "number", "boolean", "choice", "text", "article", "article_list", "photo_map")
 WIKI_SETTING_TYPES = ("article", "article_list")
-SERVICE_SETTING_TYPES = {"article": "wikipedia-race", "article_list": "wikipedia-race", "photo_region": "photo-guess"}
+SERVICE_SETTING_TYPES = {"article": "wikipedia-race", "article_list": "wikipedia-race", "photo_map": "photo-guess"}
 
 # For Classroom Games' scoreboards.
 SAVED_IN = ("scorm",)
@@ -422,14 +423,36 @@ def validate(data):
             photos = data.get("photos", {})
             if not isinstance(photos, dict) or safe_relpath(photos.get("countries", "")) is None:
                 problems.append("Games that use photo-guess need photos.countries: the path of their countries file.")
+            maps = photos.get("maps") if isinstance(photos, dict) else None
+            if not isinstance(maps, list) or not maps or not all(
+                isinstance(m, dict) and isinstance(m.get("id"), str) and MAP_ID_RE.match(m["id"])
+                and isinstance(m.get("title"), str) and isinstance(m.get("scale_km"), (int, float)) and m["scale_km"] > 0
+                for m in maps
+            ):
+                problems.append("Games that use photo-guess need photos.maps: a list of {id, title, scale_km}.")
+            elif "world" not in [m["id"] for m in maps]:
+                problems.append("photos.maps needs a map with the id 'world'.")
+            weights = photos.get("weights", {}) if isinstance(photos, dict) else {}
+            if not isinstance(weights, dict) or not all(
+                k in ("country", "location") and isinstance(v, (int, float)) and 0 <= v <= 4 for k, v in weights.items()
+            ):
+                problems.append("photos.weights must give each mode (country, location) a power from 0 to 4.")
+            for key in ("max_share", "max_photo_ratio"):
+                v = photos.get(key) if isinstance(photos, dict) else None
+                if v is not None and (not isinstance(v, (int, float)) or v <= 0):
+                    problems.append("photos.%s must be a number above 0." % key)
             names = [d.get("name") for d in sources if isinstance(d, dict)] if isinstance(sources, list) else []
             if "photo-packs" not in names:
                 problems.append("Games that use photo-guess must list the 'photo-packs' data source.")
             if not data.get("scoring"):
                 problems.append("Games that use photo-guess need a scoring section.")
             types = {f.get("key"): f.get("type") for f in settings if isinstance(f, dict)} if isinstance(settings, list) else {}
-            if types.get("region") != "photo_region" or types.get("rounds") != "integer":
-                problems.append("Games that use photo-guess need the settings 'region' (type photo_region) and 'rounds' (type integer).")
+            if types.get("map") != "photo_map" or types.get("rounds") != "integer":
+                problems.append("Games that use photo-guess need the settings 'map' (type photo_map) and 'rounds' (type integer).")
+            mode = [f for f in settings if isinstance(f, dict) and f.get("key") == "mode"] if isinstance(settings, list) else []
+            if mode and (mode[0].get("type") != "choice" or not set(c.get("value") for c in mode[0].get("choices") or []
+                                                                  if isinstance(c, dict)) <= {"country", "location"}):
+                problems.append("A photo-guess game's 'mode' setting must be a choice of 'country' and 'location'.")
 
     if problems:
         raise ManifestError(problems)
@@ -487,12 +510,12 @@ def clean_value(field, value):
         if len(value) > int(field.get("max_length", 500 if ftype == "text" else 300)):
             raise ValueError("is too long")
         return value.strip() if ftype == "article" else value
-    if ftype == "photo_region":
-        # "world" (every photo pack) or a pack id; whether the pack is on this
+    if ftype == "photo_map":
+        # "world" or another of the game's maps; whether it has photos on this
         # device is checked when settings are saved.
-        if isinstance(value, str) and (value == "world" or re.match(r"^[a-z0-9][a-z0-9_-]{0,59}$", value)):
+        if isinstance(value, str) and MAP_ID_RE.match(value):
             return value
-        raise ValueError("must be a region")
+        raise ValueError("must be a map")
     if ftype == "article_list":
         # "default" (the game's own list), "all" (every article) or "list-<id>"
         # (a list made by a coach). Whether a coach's list exists is checked

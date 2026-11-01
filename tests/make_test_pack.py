@@ -23,6 +23,10 @@ PLACES = [
 ]
 
 
+# The countries that count as neighbours for photos in each country (the pack tool works these out per photo).
+NEAR = {"SLE": ["GIN", "LBR"], "LBR": ["SLE", "GIN", "CIV"], "GIN": ["SLE", "LBR", "CIV"], "GHA": ["CIV"], "CIV": ["GHA", "LBR", "GIN"]}
+
+
 def png(rgb, w=8, h=4):
     def chunk(kind, data):
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
@@ -41,6 +45,7 @@ def files(pack_id="test-west-africa", title="Test West Africa"):
             "pano": pid == "0001",
             "credit": {"author": "tester%s" % pid, "source": "Mapillary", "license": "CC BY-SA 4.0",
                        "url": "https://www.mapillary.com/app/?pKey=%s" % pid, "captured": "2024-01-0%s" % pid[-1]},
+            "region": "Western Africa", "continent": "africa", "near": NEAR.get(country, []),
         })
     out["pack.json"] = json.dumps({"format": 1, "id": pack_id, "title": title, "version": "1",
                                    "countries": sorted({p[1] for p in PLACES}), "license": "CC BY-SA 4.0"}).encode()
