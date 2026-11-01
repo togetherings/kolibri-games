@@ -20,14 +20,5 @@ def test_wiki_blaze_reads_a_zim_file(tmp_path):
     start, goal = wiki.random_pair(w, None)
     assert start != goal
     assert w.random_article()
-    assert "Moon" in [s["path"] for s in wiki.suggest(w, "Moon")]  # an exact title always works
-    try:  # libzim's own suggestions (reported, not required: some versions return none)
-        from libzim.suggestion import SuggestionSearcher
-
-        r = SuggestionSearcher(w.archive).suggest("moo")
-        detail = "estimated %s, results %s" % (r.getEstimatedMatches(), list(r.getResults(0, 10)))
-    except Exception as e:  # noqa: BLE001
-        detail = repr(e)
-    import libzim
-
-    print("::notice title=libzim suggestions::libzim %s: %s" % (getattr(libzim, "__version__", "?"), detail))
+    assert "Moon" in [s["path"] for s in wiki.suggest(w, "moo")]  # libzim's own title suggestions
+    assert "Moon" in [s["path"] for s in wiki.suggest(w, "Moon")]

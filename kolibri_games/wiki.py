@@ -194,7 +194,9 @@ class ZimWiki(WikiSource):
                 from libzim.suggestion import SuggestionSearcher
 
                 results = SuggestionSearcher(self.archive).suggest(text)
-                found = list(results.getResults(0, limit))
+                # Newer libzim versions renamed getResults to get_results.
+                get_results = getattr(results, "get_results", None) or getattr(results, "getResults")
+                found = list(get_results(0, limit))
             except Exception:
                 logger.warning("Kolibri Games: title suggestions failed for %r", text, exc_info=True)
         if not found:
