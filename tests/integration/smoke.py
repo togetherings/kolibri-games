@@ -75,9 +75,9 @@ admin = FacilityUser.objects.filter(username="admin").first()
 routes = page_routes(get_resolver().url_patterns)
 check(bool(routes), "games page route found: %s" % routes)
 base = "/" + routes[0]
-NH = "f-org.togetherings.number-hunt"
-MM = "f-org.togetherings.memory-match"
-BLAZE = "f-org.togetherings.wiki-blaze"
+NH = "g-org.togetherings.number-hunt"
+MM = "g-org.togetherings.memory-match"
+BLAZE = "g-org.togetherings.wiki-blaze"
 
 # ------------------------------------------------------------ anonymous
 
@@ -198,8 +198,8 @@ if admin is not None:
     check(data["me"]["can_install"], "the device's super admin can install games")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
-        for name in os.listdir("games/memory-match"):
-            content = open(os.path.join("games/memory-match", name), "rb").read()
+        for name in os.listdir("tests/fixtures/games/memory-match"):
+            content = open(os.path.join("tests/fixtures/games/memory-match", name), "rb").read()
             if name == "kolibri-game.json":
                 m = json.loads(content)
                 m["id"], m["version"], m["title"] = "org.example.installed", "1.0.0", "Installed Match"
@@ -208,11 +208,11 @@ if admin is not None:
     r = a.post(base + "api/install", data=buf.getvalue(), content_type="application/zip")
     check(r.status_code == 201, "a game zip installs: %s" % r.content[:200])
     status, data = jget(learner, base + "api/games")
-    check("f-org.example.installed" in [g["key"] for g in data["games"]], "learners see the installed game")
+    check("g-org.example.installed" in [g["key"] for g in data["games"]], "learners see the installed game")
     r = c.post(base + "api/install", data=buf.getvalue(), content_type="application/zip")
     check(r.status_code == 403, "coaches can't install games")
-    status, _ = jpost(a, base + "api/games/f-org.example.installed/remove")
-    check(status == 200 and registry.get("f-org.example.installed", refresh=True) is None, "the game is removed")
+    status, _ = jpost(a, base + "api/games/g-org.example.installed/remove")
+    check(status == 200 and registry.get("g-org.example.installed", refresh=True) is None, "the game is removed")
 else:
     check(False, "no super admin called 'admin' to test installing")
 
@@ -234,7 +234,7 @@ if admin is not None:
             z.write(os.path.join("tests/fixtures/photo-game", name), name)
     r = a.post(base + "api/install", data=buf.getvalue(), content_type="application/zip")
     check(r.status_code == 201, "a photo-guess game installs: %s" % r.content[:200])
-    PG = "f-org.example.photo-test"
+    PG = "g-org.example.photo-test"
     status, st = jget(a, base + "api/status")
     check([p["id"] for p in st["photo_packs"]["packs"]] == ["test-west-africa"], "Setup lists the photo pack")
     status, session = jget(learner, base + "api/games/" + PG)
@@ -294,7 +294,7 @@ if wiki_zim and admin is not None:
 else:
     print("skip Wiki BLAZE test (KOLIBRI_GAMES_TEST_WIKI not set)")
 
-# ------------------------------------------------------------ Classroom Games
+# ------------------------------------------------------------ games in channels
 
 try:
     import zipfile
@@ -304,15 +304,17 @@ try:
     from kolibri.core.content.utils.paths import get_content_storage_file_path
     from kolibri.core.logger.models import ContentSummaryLog
 
-    LIT = os.path.join(os.getcwd(), "examples", "classroom-games", "lit")  # run from the repository folder
+    LIT = os.path.join(os.getcwd(), "examples", "channel-games", "lit")  # run from the repository folder
 
-    def html5_resource(title, with_manifest=True):
+    def html5_resource(title, with_manifest=True, manifest=None):
         checksum = uuid.uuid4().hex
         target = get_content_storage_file_path("%s.zip" % checksum)
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with zipfile.ZipFile(target, "w") as z:
             z.writestr("index.html", "<p>%s</p>" % title)
-            if with_manifest:
+            if manifest is not None:
+                z.writestr("kolibri-game.json", json.dumps(manifest))
+            elif with_manifest:
                 z.write(os.path.join(LIT, "kolibri-game.json"), "kolibri-game.json")
         local = LocalFile.objects.create(id=checksum, extension="zip", available=True, file_size=os.path.getsize(target))
         channel_id = uuid.uuid4().hex
@@ -334,16 +336,28 @@ try:
     lesson1 = html5_resource("Lesson 1: Left-hand home keys")
     lesson1_copy = html5_resource("Lesson 1 again")
     plain = html5_resource("An ordinary HTML5 app", with_manifest=False)
+    kit = {"format": 1, "type": "scored", "id": "org.example.kit-hunt", "version": "1.0.0", "title": "Kit Hunt",
+           "scoring": {"label": "Guesses", "order": "asc", "tiebreak": "seconds"}}
+    kit_node = html5_resource("Kit Hunt", manifest=kit)
+    html5_resource("Kit Story", manifest={"format": 1, "type": "saved", "id": "org.example.kit-story",
+                                          "version": "1.0.0", "title": "Kit Story"})
+    html5_resource("Server game in a channel", manifest={"format": 1, "type": "server", "id": "org.example.lost",
+                                                         "version": "1.0.0", "title": "Lost", "service": "photo-guess"})
+    played(amina, kit_node, {"_v": 1, "_save": {"level": 2}, "main": [6, 30.5, 2]})
+    played(ben, kit_node, {"main": [4, 50, 1]})
     played(amina, lesson1, {"en-01": {"done": 1, "acc": 96, "wpm": 14}})
     played(amina, lesson1_copy, {"en-01": {"done": 1, "acc": 99, "wpm": 9}})
     played(ben, lesson1, {"en-01": {"done": 1, "acc": 97, "wpm": 20}})
     LIT_KEY = "c-org.togetherings.lit"
     games = {g.key: g for g in registry.discover(refresh=True)}
-    check(LIT_KEY in games and len(games[LIT_KEY].resources) == 2, "HTML5 apps with a Classroom Game manifest form one game")
+    check(LIT_KEY in games and len(games[LIT_KEY].resources) == 2, "HTML5 apps with a Scored Game manifest form one game")
+    check("c-org.example.kit-story" not in games, "Saved Games in channels are left alone")
+    check(any(g.key.startswith("x-") and "Server Game" in " ".join(g.problems) for g in games.values()),
+          "a Server Game in a channel is reported as a problem")
     check("c-" + plain.content_id not in games, "ordinary HTML5 apps are left alone")
     status, data = jget(learner, base + "api/games")
     card = [g for g in data["games"] if g["key"] == LIT_KEY]
-    check(bool(card) and card[0]["summary"]["boards"] == 1, "Classroom Game card shows the learner's progress: %s" % card)
+    check(bool(card) and card[0]["summary"]["boards"] == 1, "Scored Game card shows the learner's progress: %s" % card)
     status, scores = jget(learner, base + "api/games/%s/boards" % LIT_KEY)
     board = scores["boards"][0] if status == 200 and scores["boards"] else {}
     rows = [(r["rank"], r["name"], r["values"]) for r in board.get("rows", [])]
@@ -351,18 +365,22 @@ try:
           "scoreboard read from Kolibri's saved data, best of both copies: %s" % rows)
     check(board.get("name") in ("Lesson 1: Left-hand home keys", "Lesson 1 again"), "board named after its resource")
     status, _ = jget(learner, base + "api/games/%s" % LIT_KEY)
-    check(status == 409, "Classroom Games can't be opened on the games page (%s)" % status)
+    check(status == 409, "games in channels can't be opened on the games page (%s)" % status)
     status, s = jpost(c, base + "api/games/%s/settings" % LIT_KEY, {"platform": {"scoreboard": "initials"}})
-    check(status == 200, "coach changed the Classroom Game's scoreboard setting")
+    check(status == 200, "coach changed the Scored Game's scoreboard setting")
     status, scores = jget(other, base + "api/games/%s/boards" % LIT_KEY)
     check([r["name"] for r in scores["boards"][0]["rows"]] == ["A.T.", "Ben Test"], "learners now see initials")
     r = c.get(base + "api/games/%s/boards?format=csv&class=%s" % (LIT_KEY, classroom.id))
     check(r.status_code == 200 and b"Amina Test" in r.content, "coach downloads scoreboards as CSV")
+    status, scores = jget(learner, base + "api/games/c-org.example.kit-hunt/boards")
+    rows = [(r["rank"], r["name"], r["values"]) for r in (scores.get("boards") or [{}])[0].get("rows", [])]
+    check(rows == [(1, "Ben Test", {"score": 4, "time": 50, "plays": 1}), (2, "Amina Test", {"score": 6, "time": 30.5, "plays": 2})],
+          "an EduGame Kit game's scoreboard comes from its scoring section: %s" % rows)
 except Exception as e:  # noqa: BLE001
     import traceback
 
     traceback.print_exc()
-    check(False, "Classroom Games test crashed: %r" % e)
+    check(False, "games in channels test crashed: %r" % e)
 
 print()
 if FAILURES:

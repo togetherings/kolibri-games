@@ -1,5 +1,5 @@
 """
-Installing Free-play Games: a device administrator uploads a game's .zip on
+Installing games on the games page: a device administrator uploads a game's .zip on
 the Setup page, and it's checked and saved in the games folder. No Django
 imports.
 
@@ -111,11 +111,6 @@ def install(upload_path):
             raise InstallError("This game's kolibri-game.json has problems: " + " ".join(e.problems))
         except SourceError as e:
             raise InstallError(str(e))
-        if manifest.is_classroom:
-            raise InstallError(
-                "This is a Classroom Game. Classroom Games aren't installed here: add the zip to a "
-                "channel (for example with Kolibri Studio) so learners open it from Learn."
-            )
         if not source.exists(manifest.entry):
             raise InstallError("The game's start page (%s) isn't in the zip." % manifest.entry)
     except InstallError:
@@ -138,9 +133,9 @@ def install(upload_path):
     forget_zip(upload_path)
     os.replace(upload_path, target)
     registry.refresh()
-    entry = registry.get(registry.FREE_PLAY_PREFIX + manifest.id, refresh=True)
+    entry = registry.get(registry.GAMES_PAGE_PREFIX + manifest.id, refresh=True)
     return {
-        "game": {"key": registry.FREE_PLAY_PREFIX + manifest.id, "title": manifest.title, "version": manifest.version},
+        "game": {"key": registry.GAMES_PAGE_PREFIX + manifest.id, "title": manifest.title, "version": manifest.version},
         "replaced": replaced,
         "problems": entry.problems if entry else [],
     }

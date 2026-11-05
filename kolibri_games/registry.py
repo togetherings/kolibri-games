@@ -3,18 +3,21 @@ Finds games on this device. No Django imports at module level (Kolibri's
 content tables are only touched inside functions, and only when Kolibri is
 running).
 
-* Free-play Games: zip files in the plugin's games folder
-  (``$KOLIBRI_HOME/kolibri_games/games``), put there by the Setup page's
-  install button (see install.py) or copied by hand. Game authors can also add
-  folders with ``KOLIBRI_GAMES_PATH``; a game folder there works like a zip.
-* Classroom Games: HTML5 apps (.zip) in Kolibri channels that contain a
-  ``kolibri-game.json`` with ``"type": "classroom"``. Every resource with the
-  same manifest id is one game. Other HTML5 apps are left alone.
+* Games on the games page (any type: Saved, Scored or Server Games): zip
+  files in the plugin's games folder (``$KOLIBRI_HOME/kolibri_games/games``),
+  put there by the Setup page's install button (see install.py) or copied by
+  hand. Game authors can also add folders with ``KOLIBRI_GAMES_PATH``; a game
+  folder there works like a zip.
+* Scored Games in channels: HTML5 apps (.zip) in Kolibri channels that
+  contain a ``kolibri-game.json`` with ``"type": "scored"``. Every resource
+  with the same manifest id is one game, with scoreboards (see channel.py).
+  Saved Games in channels need nothing from the plugin and are left alone, as
+  are other HTML5 apps.
 
 Each game gets a stable *key* used in addresses and in the database:
-``f-<manifest id>`` for Free-play Games and ``c-<manifest id>`` for Classroom
-Games. Files that look like games but can't be used get an ``x-`` key, so
-administrators can see what's wrong on the Setup page.
+``g-<manifest id>`` for games on the games page and ``c-<manifest id>`` for
+Scored Games in channels. Files that look like games but can't be used get an
+``x-`` key, so administrators can see what's wrong on the Setup page.
 """
 import hashlib
 import json
@@ -25,7 +28,7 @@ import threading
 import time
 
 from . import __version__
-from . import classroom
+from . import channel
 from . import photos
 from .manifest import ManifestError
 from .sources import FolderSource, SourceError, ZipSource
@@ -34,7 +37,7 @@ from .versions import satisfies
 logger = logging.getLogger(__name__)
 
 KEY_RE = re.compile(r"^[a-z]-[a-z0-9._-]{1,100}$")
-FREE_PLAY_PREFIX = "f-"
+GAMES_PAGE_PREFIX = "g-"
 BROKEN_PREFIX = "x-"
 #: How long the list of games is reused before looking at the disk again.
 CACHE_SECONDS = 15
@@ -54,7 +57,7 @@ def plugin_home():
 
 
 def games_dir():
-    """Where installed Free-play Games live."""
+    """Where games installed on the games page live."""
     return os.path.join(plugin_home(), "games")
 
 
@@ -171,9 +174,9 @@ def zim_candidates():
 
 
 class GameEntry(object):
-    """A Free-play Game, or a file that looks like a game but can't be used."""
+    """A game on the games page, or a file that looks like a game but can't be used."""
 
-    is_classroom = False
+    in_channel = False
 
     def __init__(self, key, source, origin, manifest=None, problems=None, content=None):
         self.key = key
@@ -216,16 +219,11 @@ class GameEntry(object):
 
 
 def check(manifest, source, with_data=True):
-    """Reasons this device can't run a Free-play Game (empty list = playable).
+    """Reasons this device can't run a game on the games page (empty list = playable).
 
     with_data=False leaves out the data the game needs from the device (photo
     packs, Wikipedia), for checking a game on a computer that doesn't have it.
     """
-    if manifest.is_classroom:
-        return [
-            "This is a Classroom Game. Classroom Games are HTML5 apps: add its .zip to a channel "
-            "(for example with Kolibri Studio) so learners open it from Learn."
-        ]
     problems = []
     if manifest.requires_platform and not satisfies(__version__, manifest.requires_platform):
         problems.append(
@@ -265,8 +263,7 @@ def load(source, origin):
     except Exception as e:  # unreadable file, ...
         return GameEntry(broken_key(source.location), source, origin, None, ["Invalid game: %s" % e])
     problems = check(manifest, source)
-    key = FREE_PLAY_PREFIX + manifest.id if not manifest.is_classroom else broken_key(source.location)
-    return GameEntry(key, source, origin, manifest, problems)
+    return GameEntry(GAMES_PAGE_PREFIX + manifest.id, source, origin, manifest, problems)
 
 
 def _local_games():
@@ -286,7 +283,7 @@ def _local_games():
     return entries
 
 
-# ------------------------------------------------------- Classroom Games
+# ------------------------------------------------------- games in channels
 
 
 def _channel_files(extension, kind=None, preset=None):
@@ -319,8 +316,8 @@ def _channel_files(extension, kind=None, preset=None):
     return found
 
 
-#: Classroom Game resources added by the preview server: [(source, content dict)].
-PREVIEW_CLASSROOM = []
+#: Channel game resources added by the preview server: [(source, content dict)].
+PREVIEW_CHANNEL = []
 
 # file id (a checksum, so the file never changes) -> (manifest, or None if broken, or False if not a game; problems)
 _zip_cache = {}
@@ -346,11 +343,11 @@ def _zip_manifest(path, file_id):
     return result
 
 
-def _classroom_games():
-    """(Classroom Games, entries for broken ones)."""
+def _channel_games():
+    """(Scored Games in channels, entries for broken ones). Saved Games are left alone."""
     resources, broken = [], []
     found = [(ZipSource(p), c, fid) for p, c, fid in _channel_files("zip", kind="html5", preset="html5_zip")]
-    found += [(s, c, None) for s, c in PREVIEW_CLASSROOM]
+    found += [(s, c, None) for s, c in PREVIEW_CHANNEL]
     for source, content, file_id in found:
         if file_id is not None:
             manifest, problems = _zip_manifest(source.location, file_id)
@@ -364,18 +361,20 @@ def _classroom_games():
         key = BROKEN_PREFIX + content["content_id"]
         if manifest is None:
             broken.append(GameEntry(key, source, "channel", None, ["Invalid game: %s" % p for p in problems], content))
-        elif not manifest.is_classroom:
+        elif manifest.type == "saved":
+            continue  # Saved Games in channels keep their saves in Kolibri; there's nothing to show here
+        elif manifest.is_server:
             broken.append(GameEntry(key, source, "channel", None, [
-                "This HTML5 app is a Free-play Game. Free-play Games aren't played from channels: "
-                "an administrator installs the .zip on the games page's Setup page."
+                "This HTML5 app is a Server Game: it needs the games page's server, so it can't be played "
+                "from a channel. An administrator installs the .zip on the games page's Setup page."
             ], content))
         elif manifest.requires_platform and not satisfies(__version__, manifest.requires_platform):
             broken.append(GameEntry(key, source, "channel", None, [
                 "This game needs Kolibri Games %s, but this device has %s." % (manifest.requires_platform, __version__)
             ], content))
         else:
-            resources.append(classroom.ClassroomResource(source, manifest, content))
-    return classroom.group_resources(resources), broken
+            resources.append(channel.ChannelResource(source, manifest, content))
+    return channel.group_resources(resources), broken
 
 
 # ------------------------------------------------------------------ cache
@@ -390,8 +389,8 @@ def discover(refresh=False):
         if not refresh and _cache["games"] is not None and time.monotonic() - _cache["at"] < CACHE_SECONDS:
             return _cache["games"]
         games, seen = [], {}
-        classroom_games, broken = _classroom_games()
-        for entry in _local_games() + classroom_games + broken:
+        channel_games, broken = _channel_games()
+        for entry in _local_games() + channel_games + broken:
             if entry.key in seen:
                 seen[entry.key].notes.append(
                     "Another copy of this game was also found at %s and ignored." % entry.source.location

@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "type": "free-play",
+  "type": "server",
   "id": "org.togetherings.wiki-blaze",
   "version": "0.1.0",
   "title": "Wiki BLAZE",

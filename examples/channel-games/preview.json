@@ -1,5 +1,5 @@
 {
- "_about": "Pretend Classroom Game resources and saved data for the preview server: kolibri-games-preview games --classroom examples/classroom-games/preview.json",
+ "_about": "Pretend Scored Game resources and saved data for the preview server: kolibri-games-preview games --channel examples/channel-games/preview.json",
  "resources": [
   {
    "source": "lit",

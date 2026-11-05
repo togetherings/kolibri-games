@@ -1,11 +1,13 @@
 """
-Classroom Games: HTML5 apps in Kolibri channels that learners open from Learn.
+Scored Games in Kolibri channels: HTML5 apps that learners open from Learn.
 
 Kolibri keeps each learner's saved data for an HTML5 app (for example SCORM
-``cmi.suspend_data``) on the server. A Classroom Game's ``kolibri-game.json``
-says how to read scores out of that data. This module turns the saved data of
-every resource (lesson) of one game into scoreboards, so the games page can
-show them. No Django or Kolibri imports.
+``cmi.suspend_data``) on the server. A Scored Game's ``kolibri-game.json``
+says how to read scores out of that data (or, for games made with
+edugame-kit, its ``scoring`` is enough: see manifest.default_scoreboards).
+This module turns the saved data of every resource (lesson) of one game into
+scoreboards, so the games page can show them. Saved Games in channels need
+nothing from the plugin. No Django or Kolibri imports.
 
 Words used here:
 
@@ -23,7 +25,7 @@ import re
 from . import ranking
 from .versions import VersionError, parse_version
 
-KEY_PREFIX = "c-"  # Classroom Game keys look like c-org.example.game
+KEY_PREFIX = "c-"  # keys of games in channels look like c-org.example.game
 MAX_SAVED_CHARS = 65536
 MAX_BOARD_ID = 100
 MAX_BOARDS_PER_SAVE = 500
@@ -91,6 +93,8 @@ def read_boards(spec, content_state):
     for board_id, entry in list(data.items())[:MAX_BOARDS_PER_SAVE]:
         if not isinstance(board_id, str) or not board_id or len(board_id) > MAX_BOARD_ID:
             continue
+        if board_id.startswith("_"):
+            continue  # not a board: the game's own save (edugame-kit keeps it under "_save")
         if only_if and _pick(entry, only_if["from"]) != only_if["equals"]:
             continue
         values = {f["key"]: _number(_pick(entry, f["from"])) for f in spec["fields"]}
@@ -155,7 +159,7 @@ def combine(spec, entries):
 # ---------------------------------------------------------------- the game
 
 
-class ClassroomResource(object):
+class ChannelResource(object):
     """One HTML5 app in a channel (or several copies of it with the same content id)."""
 
     def __init__(self, source, manifest, content):
@@ -176,11 +180,11 @@ class ClassroomResource(object):
         return {"content_id": self.content_id, "node_id": self.node_ids[0], "title": self.title}
 
 
-class ClassroomGame(object):
+class ChannelGame(object):
     """The umbrella over every resource that shares one manifest id."""
 
     origin = "channel"
-    is_classroom = True
+    in_channel = True
 
     def __init__(self, resources):
         resources = sorted(resources, key=lambda r: natural_key(r.title))
@@ -211,7 +215,7 @@ class ClassroomGame(object):
             "key": self.key,
             "origin": self.origin,
             "kind": self.source.kind,
-            "type": "classroom",
+            "type": self.manifest.type,
             "location": self.source.location,
             "title": self.title,
             "version": self.manifest.version,
@@ -232,16 +236,16 @@ def ranking_version(version):
 
 def merged_spec(manifests, newest):
     """The newest manifest's scoreboards, with board names from every version (newer names win)."""
-    spec = dict(newest.scoreboards)
+    spec = dict(newest.channel_spec)
     names = {}
     for m in sorted(manifests, key=lambda m: ranking_version(m.version)):
-        names.update(m.scoreboards.get("board_names") or {})
+        names.update((m.channel_spec or {}).get("board_names") or {})
     spec["board_names"] = names
     return spec
 
 
 def group_resources(resources):
-    """[ClassroomGame] from ClassroomResources, one game per manifest id. Copies of a content id are joined."""
+    """[ChannelGame] from ChannelResources, one game per manifest id. Copies of a content id are joined."""
     by_content = {}
     for r in resources:
         if r.content_id in by_content:
@@ -251,7 +255,7 @@ def group_resources(resources):
     by_id = {}
     for r in by_content.values():
         by_id.setdefault(r.manifest.id, []).append(r)
-    return [ClassroomGame(rs) for rs in by_id.values()]
+    return [ChannelGame(rs) for rs in by_id.values()]
 
 
 # -------------------------------------------------------------- scoreboards
@@ -297,7 +301,7 @@ def public_spec(spec):
 
 
 def scoreboards(game, saves, viewer_id, visibility="names"):
-    """Everything the games page shows for a Classroom Game."""
+    """Everything the games page shows for a Scored Game in channels."""
     spec = game.spec
     resources = {r.content_id: r for r in game.resources}
     boards = collect(game, saves)

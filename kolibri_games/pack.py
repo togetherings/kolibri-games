@@ -1,7 +1,7 @@
 """
 Package a game folder as a .zip, ready to install on the games page's Setup
-page (Free-play Games) or to upload to Kolibri Studio as an HTML5 app
-(Classroom Games). It checks the game first. No Django imports.
+page or (Saved and Scored Games) to upload to Kolibri Studio as an HTML5
+app for a channel. It checks the game first. No Django imports.
 
     kolibri-games-pack path/to/my-game                # writes dist/<id>-<version>.zip
     kolibri-games-pack path/to/my-game -o game.zip
@@ -37,12 +37,10 @@ def verify(source):
         manifest = source.manifest()
     except (ManifestError, SourceError) as e:
         return None, (e.problems if isinstance(e, ManifestError) else [str(e)])
-    problems = []
-    if manifest.is_classroom:
-        if not source.exists("index.html"):
-            problems.append("Kolibri needs an index.html at the top of an HTML5 app.")
-    else:
-        problems = check(manifest, source, with_data=False)
+    problems = check(manifest, source, with_data=False)
+    if manifest.in_channels and not source.exists("index.html"):
+        # Saved and Scored Games can also go in channels, where Kolibri opens index.html.
+        problems.append("Saved and Scored Games need an index.html at the top, so Kolibri can open them from a channel.")
     return manifest, problems
 
 

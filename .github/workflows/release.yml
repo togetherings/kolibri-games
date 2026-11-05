@@ -2,7 +2,7 @@ name: Release
 
 # Publish a release on GitHub (Releases > Draft a new release) with a tag like
 # v0.1.0, or push such a tag. This builds the plugin, the offline bundle and the
-# game zips (sample games and Wiki BLAZE) and attaches them to the release. The tag must match
+# game zips (Wiki BLAZE) and attaches them to the release. The tag must match
 # __version__ in kolibri_games/__init__.py.
 on:
   release:

@@ -1,8 +1,25 @@
-# Making a Free-play Game
+# Making a game
 
-This page is about **Free-play Games**, which are installed into Kolibri Games and played on the
-games page. For games that learners open from Learn (HTML5 apps with scoreboards), see
-[CLASSROOM_GAMES.md](CLASSROOM_GAMES.md).
+Kolibri Games has three kinds of game. The `type` field in the manifest says which:
+
+| Kind | `type` | What it keeps | Where it can be played |
+|---|---|---|---|
+| **Saved Games** | `"saved"` | Each learner's progress, like unlocked levels | On the games page, in a Kolibri channel, and anywhere else |
+| **Scored Games** | `"scored"` | Progress and a score, for scoreboards and challenges | On the games page, in a Kolibri channel, and anywhere else |
+| **Server Games** | `"server"` | Progress and a score worked out by the server | Only on the games page, because the server runs the rules |
+
+Saved and Scored Games are the easiest to make with
+[EduGame Kit](https://github.com/togetherings/edugame-kit). It builds one zip that works on the
+games page, in Kolibri channels, in Moodle and other learning systems (SCORM), RACHEL, Sugarizer
+and Kiwix. The kit adds the right `kolibri-game.json` for you.
+
+Server Games use a feature built into this plugin: Wiki BLAZE uses `wikipedia-race`
+([WIKI_BLAZE.md](WIKI_BLAZE.md)) and BeaconHunt uses `photo-guess` ([PHOTO_PACKS.md](PHOTO_PACKS.md)).
+They can't be put in a channel, because the server keeps things the learner mustn't see, like
+the answers.
+
+This page is about games installed on the games page. For Saved and Scored Games in Kolibri
+channels, see [CHANNEL_GAMES.md](CHANNEL_GAMES.md).
 
 A game is a zip of ordinary web files plus a manifest:
 
@@ -35,7 +52,7 @@ page's **Setup** page.
 ```json
 {
   "format": 1,
-  "type": "free-play",
+  "type": "scored",
   "id": "org.example.my-game",
   "version": "1.0.0",
   "title": "My Game",
@@ -67,22 +84,41 @@ page's **Setup** page.
 | Field | Required | Meaning |
 |---|---|---|
 | `format` | yes | Always `1` for now. |
-| `type` | no | `"free-play"` (the default). Classroom Games use `"classroom"`. |
+| `type` | yes | `"saved"`, `"scored"` or `"server"` (see the table at the top). |
 | `id` | yes | Unique, lower-case, stays the same across versions (e.g. `org.example.my-game`). Installing a zip with the same id updates the game. |
 | `version` | yes | Your game's version, like `1.0.0`. |
 | `title` | yes | Name shown to learners. Keep it short (30 characters fits everywhere). |
 | `description` | no | One sentence for the games page. |
 | `entry` | no | Start page, default `index.html`. |
-| `language` | no | Two- or three-letter code, default `en`. |
+| `language` | no | The language the game starts in: a code like `en` or `pt-BR`. Default `en`. |
+| `languages` | no | Every language the game can be played in, like `["en", "fr", "sw"]`. Default: just `language`. |
 | `requires_platform` | no | Plugin versions the game works with, e.g. `>=0.2` or `>=0.2,<1`. Devices with an older plugin show "ask your administrator to update" instead of a broken game. |
 | `icon`, `color` | no | Icon file and accent colour for the games page. Without an icon, a coloured tile with the first letter is used. |
-| `scoring` | no | Leave it out for games without scores (no scoreboard). `order` is `asc` when lower is better, `desc` when higher is better. `counts` is the default for which attempt counts: `first` (later attempts are practice) or `best`; coaches can change it. `tiebreak` is `seconds` (faster wins ties) or `none`. `min`/`max` refuse impossible scores. `free_play_scoreboard: false` hides the free-play scoreboard, for games whose free-play rounds can't be compared (scores are then only ranked in challenges). |
-| `settings` | no | Options coaches can change, for free play and for each challenge. Types: `integer`, `number` (with optional `min`, `max`), `boolean`, `choice` (with `choices`), `text`. Each needs `key`, `label` and `default`, and can have a `help` line. |
-| `data` | no | Large data the game needs from the device, by name: `wikipedia` (a Wikipedia .zim file) or `photo-packs` (a folder of photo packs), chosen by an administrator on the Setup page. |
-| `service` | no | A server feature built into Kolibri Games: `"wikipedia-race"` (see [WIKI_BLAZE.md](WIKI_BLAZE.md)) or `"photo-guess"` (see [PHOTO_PACKS.md](PHOTO_PACKS.md)). |
+| `scoring` | Scored and Server Games | What the score is called and how it's ranked. Saved Games have none. `order` is `asc` when lower is better, `desc` when higher is better. `counts` is the default for which attempt counts: `first` (later attempts are practice) or `best`; coaches can change it. `tiebreak` is `seconds` (faster wins ties) or `none`. `min`/`max` refuse impossible scores. `free_play_scoreboard: false` hides the free-play scoreboard, for games whose free-play rounds can't be compared (scores are then only ranked in challenges). |
+| `settings` | no | Options coaches can change on the games page, for free play and for each challenge (games in channels don't have them). Types: `integer`, `number` (with optional `min`, `max`), `boolean`, `choice` (with `choices`), `text`. Each needs `key`, `label` and `default`, and can have a `help` line. |
+| `data` | Server Games | Large data the game needs from the device, by name: `wikipedia` (a Wikipedia .zim file) or `photo-packs` (a folder of photo packs), chosen by an administrator on the Setup page. |
+| `service` | Server Games | A server feature built into Kolibri Games: `"wikipedia-race"` (see [WIKI_BLAZE.md](WIKI_BLAZE.md)) or `"photo-guess"` (see [PHOTO_PACKS.md](PHOTO_PACKS.md)). |
 
-Every game also gets these coach settings from the platform: which attempt counts, what learners
-see on the scoreboard (names, initials only, or only their own result), and a time limit.
+Every game also gets these coach settings from the platform: a time limit and, for games with a
+score, which attempt counts and what learners see on the scoreboard (names, initials only, or
+only their own result).
+
+A Saved Game's manifest is short:
+
+```json
+{
+  "format": 1,
+  "type": "saved",
+  "id": "org.example.story-path",
+  "version": "1.0.0",
+  "title": "Story Path",
+  "languages": ["en", "fr"]
+}
+```
+
+It has no score, so it has no scoreboard and can't be used in a challenge. Save the learner's
+progress with `KG.setState()` and read it back with `KG.getState()`: it's kept in their Kolibri
+account, so they can carry on from any device.
 
 ## Free play and challenges
 
@@ -90,7 +126,7 @@ Learners can play any game whenever they like (**free play**), with the settings
 the whole facility. A coach can also set up a **challenge** for one class: its own name, when it
 opens and closes (with Open and Close buttons, or at set times), which attempt counts, time limit
 and game settings. Each challenge has its own
-scoreboard. Your game doesn't need to do anything different: `KG.ready()` tells you the settings
+scoreboard. Only Scored and Server Games can be challenges. Your game doesn't need to do anything different: `KG.ready()` tells you the settings
 and whether it's a challenge.
 
 ## The SDK

@@ -55,7 +55,7 @@ jobs:
         python: ["3.10", "3.11"]
     env:
       KOLIBRI_HOME: ${{ github.workspace }}/.kolibri-home
-      KOLIBRI_GAMES_PATH: ${{ github.workspace }}/games
+      KOLIBRI_GAMES_PATH: ${{ github.workspace }}/games:${{ github.workspace }}/tests/fixtures/games
       KOLIBRI_RUN_MODE: ci
     steps:
       - uses: actions/checkout@v4

@@ -92,7 +92,7 @@ usable links.
 
 ## For game makers: the `wikipedia-race` service
 
-Wiki BLAZE is an ordinary Free-play Game whose manifest asks for a server feature:
+Wiki BLAZE is a Server Game: its manifest asks for a server feature:
 
 ```json
 "service": "wikipedia-race",

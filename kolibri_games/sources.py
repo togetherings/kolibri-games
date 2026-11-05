@@ -1,8 +1,8 @@
 """
 Where a game's files come from:
 
-* a zip file: how every game is shared (a Kolibri HTML5 app, or a Free-play
-  Game installed into this plugin)
+* a zip file: how every game is shared (a Kolibri HTML5 app in a channel, or
+  a game installed into this plugin)
 * a plain folder: handy while making a game (the preview server and
   KOLIBRI_GAMES_PATH can point at folders)
 

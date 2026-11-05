@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "type": "free-play",
+  "type": "scored",
   "id": "org.togetherings.memory-match",
   "version": "0.2.0",
   "title": "Memory Match",

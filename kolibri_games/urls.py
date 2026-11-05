@@ -30,7 +30,7 @@ urlpatterns = [
     re_path(GAME + r"/state$", views.state, name="state"),
     re_path(GAME + r"/scoreboard$", views.scoreboard, name="scoreboard"),
     re_path(GAME + r"/mine$", views.mine, name="mine"),
-    re_path(GAME + r"/boards$", views.classroom_boards, name="classroom_boards"),
+    re_path(GAME + r"/boards$", views.channel_boards, name="channel_boards"),
     # coaches
     re_path(r"^api/classes$", views.classes, name="classes"),
     re_path(GAME + r"/settings$", views.settings, name="settings"),

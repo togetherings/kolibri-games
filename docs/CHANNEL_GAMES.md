@@ -1,14 +1,18 @@
-# Classroom Games
+# Games in Kolibri channels
 
-Kolibri Games has two kinds of game:
+Saved Games and Scored Games (see [GAME_FORMAT.md](GAME_FORMAT.md)) can also be put in a Kolibri
+channel as ordinary HTML5 apps (`.zip`). Learners open them from Learn, and coaches can put them
+in lessons and assign them to classes, like any other resource.
 
-- **Free-play Games** are installed into Kolibri Games and played on the games page (see
-  [GAME_FORMAT.md](GAME_FORMAT.md)).
-- **Classroom Games** are ordinary Kolibri HTML5 apps (`.zip`) in a channel. Learners open them from
-  Learn, and coaches can put them in lessons and assign them to classes, like any other resource.
-  The games page shows **scoreboards** made from the scores the game saves.
+- **Saved Games** need nothing from Kolibri Games: Kolibri keeps each learner's progress. The
+  games page doesn't list them.
+- **Scored Games** also appear on the games page, under **Scored Games in Learn**, with
+  **scoreboards** made from the scores the game saves.
+- **Server Games** can't be put in a channel. If one is, the Setup page says so.
 
-This page is about Classroom Games.
+The easiest way to make these is [EduGame Kit](https://github.com/togetherings/edugame-kit): its
+zips already have a `kolibri-game.json` and save scores the way Kolibri Games reads them. This
+page explains how that works, and how to make an existing HTML5 app a Scored Game.
 
 ## How it works
 
@@ -17,7 +21,7 @@ app saves in `cmi.suspend_data` on the server, in the learner's record for that 
 Games reads that saved data. It doesn't change it, and the game doesn't need to know about Kolibri
 Games at all.
 
-To make an HTML5 app a Classroom Game, add a `kolibri-game.json` file next to its `index.html`,
+To make an HTML5 app a Scored Game, add a `kolibri-game.json` file next to its `index.html`,
 before you upload the zip to Kolibri Studio. The file says which game the app belongs to and how
 to read scores out of its saved data. HTML5 apps without this file are left alone.
 
@@ -30,10 +34,30 @@ Words used on this page:
   in one mode. If two resources save the same board (a map used in two lessons), they share one
   scoreboard, and each learner's best result counts.
 
+## Games made with EduGame Kit
+
+A Scored Game made with the kit saves the learner's best score under the board `main`, as
+`[best score, seconds, times played]`, and its own save data under keys starting with `_`
+(these are never boards). Its manifest only needs `scoring`; Kolibri Games builds the
+scoreboard from it:
+
+```json
+{
+  "format": 1,
+  "type": "scored",
+  "id": "org.example.number-hunt",
+  "version": "1.0.0",
+  "title": "Number Hunt",
+  "scoring": { "label": "Guesses", "order": "asc", "tiebreak": "seconds" }
+}
+```
+
+The same zip can be installed on the games page too, where it reports its score through the SDK.
+
 ## What the saved data must look like
 
 `cmi.suspend_data` must be text holding a JSON object, with one entry per board, keyed by the
-board's id. Each entry is either an object or a list:
+board's id (ids starting with `_` are skipped). Each entry is either an object or a list:
 
 ```json
 { "en-01": { "done": 1, "acc": 96, "wpm": 14 } }
@@ -46,14 +70,14 @@ board's id. Each entry is either an object or a list:
 Keep board ids stable: changing one hides the scores saved under the old id. SCORM 1.2 allows
 4096 characters in `cmi.suspend_data`, so keep it short.
 
-## The manifest
+## The manifest for other games
 
 Example for Lessons In Typing (one lesson per resource, the board is named after the resource):
 
 ```json
 {
   "format": 1,
-  "type": "classroom",
+  "type": "scored",
   "id": "org.togetherings.lit",
   "version": "0.21.0",
   "title": "Lessons In Typing",
@@ -78,7 +102,7 @@ Example for Studies In Geography (several maps and modes per resource, values in
 ```json
 {
   "format": 1,
-  "type": "classroom",
+  "type": "scored",
   "id": "org.togetherings.singe",
   "version": "0.24.0",
   "title": "Studies In Geography",
@@ -100,22 +124,22 @@ Example for Studies In Geography (several maps and modes per resource, values in
 }
 ```
 
-Both files are in [examples/classroom-games](../examples/classroom-games).
+Both files are in [examples/channel-games](../examples/channel-games).
 
 ### Fields
 
 | Field | Meaning |
 |---|---|
 | `format` | Always `1`. |
-| `type` | `"classroom"`. |
+| `type` | `"scored"`. |
 | `id` | The game's id, shared by every resource of the game. Never change it. |
 | `version` | Like `1.2.0`. When resources have different versions, the newest manifest is used for the title, description and scoreboard layout. Board names from every version are kept. |
 | `title`, `description`, `color`, `icon` | Shown on the games page. `icon` is a path inside the zip. |
 | `requires_platform` | Optional, like `">=0.2"`. |
+| `scoring` | Optional. Used on the games page, and to build the scoreboard when there's no `scoreboards`. |
 | `scoreboards` | How to read the saved data, below. |
 
-Classroom Games can't use `scoring`, `settings`, `data` or `service`: those are for Free-play
-Games.
+`settings` are only used on the games page. `data` and `service` are only for Server Games.
 
 ### `scoreboards`
 
@@ -160,10 +184,10 @@ another Kolibri server that syncs with this one.
 
 ## Trying it without Kolibri
 
-The preview server can pretend that learners played Classroom Games in Learn:
+The preview server can pretend that learners played Scored Games in Learn:
 
 ```
-kolibri-games-preview games --classroom examples/classroom-games/preview.json
+kolibri-games-preview games --channel examples/channel-games/preview.json
 ```
 
 `preview.json` lists resources (a folder or zip with a `kolibri-game.json`, plus a pretend
