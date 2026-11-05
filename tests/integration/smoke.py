@@ -341,8 +341,8 @@ try:
     kit_node = html5_resource("Kit Hunt", manifest=kit)
     html5_resource("Kit Story", manifest={"format": 1, "type": "saved", "id": "org.example.kit-story",
                                           "version": "1.0.0", "title": "Kit Story"})
-    html5_resource("Server game in a channel", manifest={"format": 1, "type": "server", "id": "org.example.lost",
-                                                         "version": "1.0.0", "title": "Lost", "service": "photo-guess"})
+    blaze = json.load(open(os.path.join(os.getcwd(), "games", "wiki-blaze", "kolibri-game.json")))
+    html5_resource("Server game in a channel", manifest=blaze)
     played(amina, kit_node, {"_v": 1, "_save": {"level": 2}, "main": [6, 30.5, 2]})
     played(ben, kit_node, {"main": [4, 50, 1]})
     played(amina, lesson1, {"en-01": {"done": 1, "acc": 96, "wpm": 14}})
