@@ -5,7 +5,7 @@ import pytest
 
 from kolibri_games import registry
 from kolibri_games.service import GameService, MemoryStore, PlatformError, Player
-from tests.helpers import GAMES, Clock, folder_game
+from tests.helpers import ALL_GAME_DIRS, GAMES, Clock, folder_game, game_dir
 
 FAC = "f" * 32
 CLASS_A, CLASS_B = "e" * 32, "9" * 32
@@ -269,18 +269,18 @@ def test_a_clock_jump_during_play_doesnt_count(setup):
 
 def test_registry_finds_games_and_reports_problems(tmp_path):
     os.environ["KOLIBRI_HOME"] = str(tmp_path)
-    os.environ["KOLIBRI_GAMES_PATH"] = GAMES
+    os.environ["KOLIBRI_GAMES_PATH"] = os.pathsep.join(ALL_GAME_DIRS)
     try:
         keys = [g.key for g in registry.discover(refresh=True)]
-        assert "f-org.togetherings.number-hunt" in keys
-        assert registry.get("f-org.togetherings.memory-match").playable
+        assert "g-org.togetherings.number-hunt" in keys
+        assert registry.get("g-org.togetherings.memory-match").playable
         broken = tmp_path / "kolibri_games" / "games" / "future"
         broken.mkdir(parents=True)
         (broken / "kolibri-game.json").write_text(
-            '{"format": 1, "id": "org.example.future", "version": "1.0", "title": "Future", '
+            '{"format": 1, "type": "saved", "id": "org.example.future", "version": "1.0", "title": "Future", '
             '"requires_platform": ">=9"}'
         )
-        entry = registry.get("f-org.example.future", refresh=True)
+        entry = registry.get("g-org.example.future", refresh=True)
         assert not entry.playable and entry.origin == "installed"
         text = " ".join(entry.problems)
         assert "Kolibri Games >=9" in text and "start page" in text
@@ -292,3 +292,16 @@ def test_registry_finds_games_and_reports_problems(tmp_path):
         del os.environ["KOLIBRI_GAMES_PATH"]
         del os.environ["KOLIBRI_HOME"]
         registry.discover(refresh=True)
+
+
+def test_saved_games_keep_progress_but_cant_be_challenges(setup):
+    service, clock, amina, ben, cara, coach = setup
+    game = folder_game("tally")
+    assert game.manifest.type == "saved" and not game.manifest.has_scores
+    service.set_state(game, amina, {"count": 4})
+    assert service.get_state(game, amina) == {"count": 4}
+    assert service.get_state(game, ben) is None
+    assert [f["key"] for f in service.schema(game, FAC)["platform"]] == ["time_limit"]
+    with pytest.raises(PlatformError) as e:
+        make_challenge(service, game, coach, clock)
+    assert e.value.code == "no_scores"

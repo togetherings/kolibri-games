@@ -1,7 +1,7 @@
 # Notes for working on this repository
 
 - Python package: `kolibri_games/`. Kolibri plugin name: `kolibri_games`.
-- Keep `service.py`, `ranking.py`, `classroom.py`, `wiki.py`, `wikirace.py`, `photos.py`, `photoguess.py`, `install.py`, `manifest.py`,
+- Keep `service.py`, `ranking.py`, `channel.py`, `wiki.py`, `wikirace.py`, `photos.py`, `photoguess.py`, `install.py`, `manifest.py`,
   `registry.py`, `sources.py`, `views_common.py` free of Django imports; Django code lives in `models.py`, `store_django.py`,
   `views.py`, `urls.py`, `management/`.
 - `devserver.py` mirrors the API in `views.py` with the memory store. Change both together.
@@ -12,6 +12,9 @@
 - Bump `__version__` in `kolibri_games/__init__.py` and add a CHANGELOG entry before a release.
   Releases are published by a person in GitHub's Releases page (tag `vX.Y.Z`); the Release
   workflow then builds and attaches the files. Claude sessions can't create tags or releases.
+- Three kinds of game (manifest `type`): Saved, Scored and Server Games. Saved and Scored Games are
+  made with edugame-kit (github.com/togetherings/edugame-kit) and also work in channels; Server Games
+  use a service here. The kit's save format (board "main", "_" keys) is read in channel.py: change both together.
 - Writing style for anything users see: plain words, sentence case, active voice.
 - BeaconHunt (github.com/togetherings/beacon-hunt) uses the photo-guess service; the photo-pack
   format in docs/PHOTO_PACKS.md is shared with its pack tool, so change both together.

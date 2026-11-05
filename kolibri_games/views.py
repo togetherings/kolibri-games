@@ -145,8 +145,8 @@ def _game(key, playable=True):
     game = registry.get(key)
     if game is None or game.manifest is None:
         raise PlatformError("That game isn't on this device.", "not_found", 404)
-    if playable and game.is_classroom:
-        raise PlatformError("This is a Classroom Game. Open it from Learn.", "classroom_game", 409)
+    if playable and game.in_channel:
+        raise PlatformError("This game is in a channel. Open it from Learn.", "in_channel", 409)
     if playable and not game.playable:
         raise PlatformError(" ".join(game.problems) or "This game can't be played.", "unplayable", 409)
     return game
@@ -242,7 +242,7 @@ def play_file(request, token, path=""):
             "This game link has expired. Go back and open the game again.", status=403, content_type="text/plain"
         )
     game = registry.get(claims.get("k"))
-    if game is None or game.manifest is None or game.is_classroom:
+    if game is None or game.manifest is None or game.in_channel:
         return HttpResponse(status=404)
     if path == SDK_PATH:
         with open(os.path.join(ASSETS, "sdk.js"), "rb") as f:
@@ -397,14 +397,14 @@ def reset(request, player, key, user_id):
 
 @require_GET
 @api
-def classroom_boards(request, player, key):
-    """Scoreboards of a Classroom Game."""
+def channel_boards(request, player, key):
+    """Scoreboards of a Scored Game in channels."""
     game = _game(key, playable=False)
     user_ids = None
     class_id = request.GET.get("class")
     if class_id and player.is_coach:
         user_ids = {u for u, _ in _users_in_class(player, class_id)}
-    data = service.classroom_scoreboards(game, player, user_ids=user_ids)
+    data = service.channel_scoreboards(game, player, user_ids=user_ids)
     if request.GET.get("format") == "csv":
         if not player.is_coach:
             raise PlatformError("Only coaches and administrators can do this.", "forbidden", 403)

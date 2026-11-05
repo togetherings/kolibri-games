@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "type": "free-play",
+  "type": "scored",
   "id": "org.togetherings.number-hunt",
   "version": "0.2.0",
   "title": "Number Hunt",

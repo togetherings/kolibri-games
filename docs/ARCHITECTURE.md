@@ -8,7 +8,7 @@
  │   index.html, game.js    │            │ service.py    free play, challenges, scores │
  └──────────────────────────┘            │ wiki.py       reads the Wikipedia ZIM       │
  Kolibri channel (HTML5 apps)            │ wikirace.py   Wiki BLAZE rules              │
- ┌──────────────────────────┐   import   │ classroom.py  Classroom Game scoreboards    │
+ ┌──────────────────────────┐   import   │ channel.py    scoreboards for channel games │
  │ lit-lesson-1.zip         │ ─────────▶ │ views.py      page, JSON API, game files    │
  │   kolibri-game.json      │            │ models.py     results in Kolibri's database │
  └──────────────────────────┘            └────────────────────────────────────────────┘
@@ -22,12 +22,22 @@
  └───────────────────────────────────────────────────────────────┘
 ```
 
-## Two kinds of game
+## Three kinds of game
 
-- **Free-play Games** are zips installed into the plugin by a device administrator (Setup page,
-  `install.py`) and played on the games page, in free play or in a coach's challenge.
-- **Classroom Games** are HTML5 apps in Kolibri channels, played in Learn. The plugin only reads
-  the scores they save, to show scoreboards (`classroom.py`, [CLASSROOM_GAMES.md](CLASSROOM_GAMES.md)).
+The manifest's `type` says which kind a game is (`manifest.py`, [GAME_FORMAT.md](GAME_FORMAT.md)):
+
+- **Saved Games** (`"saved"`) keep each learner's progress.
+- **Scored Games** (`"scored"`) also report a score.
+- **Server Games** (`"server"`) need one of the plugin's services (`wikipedia-race`,
+  `photo-guess`), because the server runs the rules and keeps the answers.
+
+Any kind can be installed by a device administrator (Setup page, `install.py`) and played on the
+games page, in free play or (with a score) in a coach's challenge. Saved and Scored Games can also
+be HTML5 apps in Kolibri channels, played in Learn, and outside Kolibri altogether (they're made
+with [EduGame Kit](https://github.com/togetherings/edugame-kit)). For Scored Games in channels,
+the plugin only reads the scores they save, to show scoreboards (`channel.py`,
+[CHANNEL_GAMES.md](CHANNEL_GAMES.md)). Saved Games in channels are left alone, and Server Games
+in channels are reported as a problem.
 
 ## Trust boundaries
 
@@ -63,7 +73,7 @@ don't depend on Kolibri's internal migration history.
 | `ArticleList` | A coach's list of Wikipedia articles for Wiki BLAZE, per facility. |
 | `PlayerState` | Up to 64 KB of saved data per game per learner. |
 
-Classroom Games add no tables. Their scores are read when needed from Kolibri's own
+Games in channels add no tables. Their scores are read when needed from Kolibri's own
 `ContentSummaryLog.extra_fields["contentState"]["SCORM"]`, where Kolibri keeps what an HTML5 app
 saves. Those logs sync between Kolibri servers, unlike the plugin's tables.
 
@@ -80,9 +90,9 @@ the version before the last update), and `data_sources.json` (the Wikipedia file
 
 1. **The games folder** (`<KOLIBRI_HOME>/kolibri_games/games/`), plus any folders in
    `KOLIBRI_GAMES_PATH` for game makers (which can hold unzipped game folders). Key:
-   `f-<manifest id>`.
+   `g-<manifest id>`.
 2. **Kolibri channels:** every available HTML5 app (`html5_zip`) whose zip contains a
-   `kolibri-game.json` with `"type": "classroom"`. Each zip is opened once and the answer is kept
+   `kolibri-game.json` with `"type": "scored"`. Each zip is opened once and the answer is kept
    by file checksum, so ordinary HTML5 apps cost one look. Resources with the same manifest id
    form one game. Key: `c-<manifest id>`.
 
@@ -109,7 +119,7 @@ the server.
 
 ## Shared code
 
-`service.py`, `ranking.py`, `classroom.py`, `wiki.py`, `wikirace.py`, `photos.py`, `photoguess.py`,
+`service.py`, `ranking.py`, `channel.py`, `wiki.py`, `wikirace.py`, `photos.py`, `photoguess.py`,
 `install.py`, `manifest.py`, `registry.py`, `sources.py` and `views_common.py` don't import Django, so the same rules run in
 Kolibri (`store_django.py` + `views.py`), in the unit tests and in the preview server
 (`devserver.py`, memory store).

@@ -18,7 +18,7 @@ FIXTURE = os.path.join(ROOT, "tests", "fixtures", "photo-game")
 def photo_game():
     source = FolderSource(FIXTURE)
     manifest = source.manifest()
-    return GameEntry("f-" + manifest.id, source, "folder", manifest, check(manifest, source))
+    return GameEntry("g-" + manifest.id, source, "folder", manifest, check(manifest, source))
 
 
 @pytest.fixture

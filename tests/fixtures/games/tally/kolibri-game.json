@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "type": "saved",
+  "id": "org.togetherings.tally",
+  "version": "0.1.0",
+  "title": "Tally",
+  "description": "A test Saved Game: count up, and the count is kept.",
+  "languages": ["en"],
+  "license": "MIT"
+}

@@ -5,10 +5,18 @@ settings that coaches fill in. No Django or Kolibri imports.
 Every game is a zip file with a ``kolibri-game.json`` at its root. The
 ``type`` field says which kind of game it is:
 
-* ``"free-play"`` (the default): installed into this plugin and played on the
-  games page. See docs/GAME_FORMAT.md.
-* ``"classroom"``: an HTML5 app in a Kolibri channel, played in Learn. The
-  games page shows scoreboards from its saved data. See docs/CLASSROOM_GAMES.md.
+* ``"saved"``: Saved Games keep each learner's progress, and nothing more.
+* ``"scored"``: Scored Games also report a score, for scoreboards.
+* ``"server"``: Server Games need this plugin's server to play (Wiki BLAZE,
+  BeaconHunt): the server runs the rules, so they can't work offline or
+  anywhere else. They use one of the plugin's services.
+
+Saved and Scored Games can be installed on the games page *or* put in a
+Kolibri channel and opened from Learn (they also work outside Kolibri: see
+github.com/togetherings/edugame-kit, which makes them). In a channel, the
+games page shows Scored Games' scoreboards from the data they save
+(docs/CHANNEL_GAMES.md). Server Games are only installed on the games page
+(docs/GAME_FORMAT.md).
 """
 import json
 import posixpath
@@ -23,10 +31,11 @@ ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,99}$")
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+LANG_RE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$")
 
-GAME_TYPES = ("free-play", "classroom")
+GAME_TYPES = ("saved", "scored", "server")
 
-#: Server-side services built into this plugin that a Free-play Game can use.
+#: Server-side services built into this plugin that a Server Game uses (exactly one).
 #: "wikipedia-race": the server reads Wikipedia articles for the game, checks
 #: every link the learner follows and works out the score (see wikirace.py).
 #: "photo-guess": the server picks street photos from photo packs, keeps where
@@ -41,12 +50,12 @@ SETTING_TYPES = ("integer", "number", "boolean", "choice", "text", "article", "a
 WIKI_SETTING_TYPES = ("article", "article_list")
 SERVICE_SETTING_TYPES = {"article": "wikipedia-race", "article_list": "wikipedia-race", "photo_map": "photo-guess"}
 
-# For Classroom Games' scoreboards.
+# For Scored Games' scoreboards in channels.
 SAVED_IN = ("scorm",)
 COMBINE = ("best", "sum", "max")
 MAX_FIELDS = 8
 
-#: Settings every Free-play Game has, managed by the platform rather than the game.
+#: Settings every game on the games page has, managed by the platform rather than the game.
 PLATFORM_SETTINGS = [
     {
         "key": "counts",
@@ -106,7 +115,7 @@ class Manifest(object):
     def __init__(self, data):
         self.raw = data
         self.format = data["format"]
-        self.type = data.get("type", "free-play")
+        self.type = data["type"]
         self.id = data["id"]
         self.version = data["version"]
         self.title = data["title"]
@@ -118,19 +127,37 @@ class Manifest(object):
         self.color = data.get("color", "#3b6e8f")
         self.authors = data.get("authors", [])
         self.license = data.get("license", "")
-        # Free-play Games
+        self.languages = data.get("languages") or [self.language]
         self.scoring = data.get("scoring")
         self.settings = data.get("settings", [])
         self.data = data.get("data", [])
         self.service = data.get("service")
         self.wikipedia = data.get("wikipedia") or {}
         self.photos = data.get("photos") or {}
-        # Classroom Games
+        # How to read scores from saved data in channels (Scored Games); see channel_spec.
         self.scoreboards = data.get("scoreboards")
 
     @property
-    def is_classroom(self):
-        return self.type == "classroom"
+    def is_server(self):
+        return self.type == "server"
+
+    @property
+    def in_channels(self):
+        """Saved and Scored Games can be put in Kolibri channels; Server Games can't."""
+        return self.type in ("saved", "scored")
+
+    @property
+    def channel_spec(self):
+        """How to read this game's scores from its saved data in a channel, or None (Saved Games).
+
+        Games made with edugame-kit don't need a ``scoreboards`` section: their
+        save helper saves scores in a standard way (see DEFAULT_BOARD), and this
+        builds the scoreboard from ``scoring``. Other games say how to read
+        their own saved data in ``scoreboards`` (docs/CHANNEL_GAMES.md).
+        """
+        if self.type != "scored":
+            return None
+        return self.scoreboards or default_scoreboards(self.scoring)
 
     @property
     def has_scores(self):
@@ -141,9 +168,9 @@ class Manifest(object):
         """False for games whose free-play rounds can't be compared (like random Wiki BLAZE pairs)."""
         return self.has_scores and self.scoring.get("free_play_scoreboard", True)
 
-    def platform_settings_schema(self):
+    def platform_settings_schema(self, in_channel=False):
         schema = [dict(s) for s in PLATFORM_SETTINGS]
-        if self.is_classroom:
+        if in_channel:
             board = dict([f for f in schema if f["key"] == "scoreboard"][0])
             return [board]
         for field in schema:
@@ -162,6 +189,7 @@ class Manifest(object):
             "title": self.title,
             "description": self.description,
             "language": self.language,
+            "languages": self.languages,
             "scoring": self.scoring,
             "color": self.color,
             "authors": self.authors,
@@ -236,9 +264,9 @@ def _check_scoring(scoring, problems):
 
 
 def _check_scoreboards(sb, problems):
-    """Checks the "scoreboards" section of a Classroom Game and returns it with defaults filled in."""
+    """Checks the "scoreboards" section of a Scored Game and returns it with defaults filled in."""
     if not isinstance(sb, dict):
-        problems.append("Classroom Games need a scoreboards section that says how to read their saved data.")
+        problems.append("scoreboards must be an object that says how to read the game's saved data.")
         return None
     where = "scoreboards"
     saved_in = sb.get("saved_in", "scorm")
@@ -332,6 +360,31 @@ def _check_scoreboards(sb, problems):
     }
 
 
+#: Where games made with edugame-kit keep their score in their saved data: this
+#: board id, as [best score, seconds of that play, times played]. One board per
+#: resource. Keys starting with "_" hold the save itself and are never boards.
+DEFAULT_BOARD = "main"
+
+
+def default_scoreboards(scoring):
+    """The scoreboards spec for a Scored Game made with edugame-kit (see DEFAULT_BOARD)."""
+    scoring = scoring or {}
+    fields = [{"key": "score", "from": 0, "label": scoring.get("label") or "Score",
+               "unit": scoring.get("unit", ""), "order": scoring.get("order", "desc"),
+               "decimals": scoring.get("decimals", 0)}]
+    rank_by = ["score"]
+    if scoring.get("tiebreak") == "seconds":
+        fields.append({"key": "time", "from": 1, "label": "Time", "seconds": True, "order": "asc"})
+        rank_by.append("time")
+    fields.append({"key": "plays", "from": 2, "label": "Times played", "combine": "sum"})
+    spec = {"saved_in": "scorm", "board_label": "Game", "name_boards_after_resource": True,
+            "fields": fields, "rank_by": rank_by}
+    problems = []
+    clean = _check_scoreboards(spec, problems)
+    assert not problems, problems
+    return clean
+
+
 def validate(data):
     """Return a Manifest, or raise ManifestError listing every problem found."""
     problems = []
@@ -340,9 +393,9 @@ def validate(data):
 
     if data.get("format") != MANIFEST_FORMAT:
         problems.append("format must be %d." % MANIFEST_FORMAT)
-    gtype = data.get("type", "free-play")
+    gtype = data.get("type")
     if gtype not in GAME_TYPES:
-        problems.append("type must be 'free-play' or 'classroom'.")
+        problems.append("type must be 'saved', 'scored' or 'server'.")
     gid = data.get("id")
     if not isinstance(gid, str) or not ID_RE.match(gid):
         problems.append("id must be 3-100 lower-case letters, digits, '.', '_' or '-' (e.g. org.example.my-game).")
@@ -369,90 +422,106 @@ def validate(data):
     clean = dict(data)
     clean["type"] = gtype
     clean["entry"] = safe_relpath(data.get("entry", "index.html"))
+    languages = data.get("languages", [data.get("language", "en")])
+    if not isinstance(languages, list) or not languages or not all(
+        isinstance(code, str) and LANG_RE.match(code) for code in languages
+    ):
+        problems.append("languages must list language codes like 'en' or 'pt-BR'.")
 
-    if gtype == "classroom":
-        for name in ("scoring", "settings", "data", "service", "wikipedia", "photos"):
-            if name in data:
-                problems.append("Classroom Games can't use '%s'. Their scores come from their saved data." % name)
-        clean["scoreboards"] = _check_scoreboards(data.get("scoreboards"), problems)
-    else:
+    service = data.get("service")
+    if gtype == "server":
+        if service not in SERVICES:
+            problems.append("Server Games need a service: one of %s." % ", ".join(SERVICES))
         if "scoreboards" in data:
-            problems.append("scoreboards is only for Classroom Games (type 'classroom').")
-        service = data.get("service")
-        if service is not None and service not in SERVICES:
-            problems.append("service must be one of %s." % ", ".join(SERVICES))
-        if data.get("scoring") is not None:
-            clean["scoring"] = _check_scoring(data["scoring"], problems)
-        settings = data.get("settings", [])
-        if not isinstance(settings, list):
-            problems.append("settings must be a list.")
-        else:
-            seen = set()
-            for i, field in enumerate(settings):
-                _check_setting(field, i, problems, service)
-                key = field.get("key") if isinstance(field, dict) else None
-                if key in seen:
-                    problems.append("settings key '%s' is used twice." % key)
-                seen.add(key)
-        sources = data.get("data", [])
-        if not isinstance(sources, list):
-            problems.append("data must be a list.")
-        else:
-            for i, src in enumerate(sources):
-                if not isinstance(src, dict) or not isinstance(src.get("name"), str) or not NAME_RE.match(src["name"]):
-                    problems.append("data[%d].name must be a name like 'wikipedia'." % i)
-        if service == "wikipedia-race":
-            wiki = data.get("wikipedia", {})
-            if not isinstance(wiki, dict):
-                problems.append("wikipedia must be an object.")
-            elif "default_list" in wiki and safe_relpath(wiki["default_list"]) is None:
-                problems.append("wikipedia.default_list must be a relative path inside the game.")
-            names = [d.get("name") for d in sources if isinstance(d, dict)] if isinstance(sources, list) else []
-            if "wikipedia" not in names:
-                problems.append("Games that use wikipedia-race must list the 'wikipedia' data source.")
-            if not data.get("scoring"):
-                problems.append("Games that use wikipedia-race need a scoring section.")
-            types = {f.get("key"): f.get("type") for f in settings if isinstance(f, dict)} if isinstance(settings, list) else {}
-            if types.get("start") != "article" or types.get("goal") != "article" or types.get("list") != "article_list":
-                problems.append(
-                    "Games that use wikipedia-race need the settings 'start' and 'goal' (type article) "
-                    "and 'list' (type article_list)."
-                )
+            problems.append("scoreboards is only for Scored Games (it's how channels read their scores).")
+    elif service is not None:
+        problems.append("Only Server Games (type 'server') use a service.")
+    if gtype == "saved":
+        for name in ("scoring", "scoreboards"):
+            if name in data:
+                problems.append("Saved Games don't keep scores, so they can't have '%s'. Use type 'scored'." % name)
+    if gtype == "scored":
+        if not data.get("scoring") and data.get("scoreboards") is None:
+            problems.append("Scored Games need a scoring section (what the score is called, and whether more is "
+                            "better), or a scoreboards section that says how to read scores from their saved data.")
+        if data.get("scoreboards") is not None:
+            clean["scoreboards"] = _check_scoreboards(data["scoreboards"], problems)
+    if gtype != "server":
+        for name in ("data", "wikipedia", "photos"):
+            if name in data:
+                problems.append("'%s' is only for Server Games." % name)
+    if data.get("scoring") is not None:
+        clean["scoring"] = _check_scoring(data["scoring"], problems)
+    settings = data.get("settings", [])
+    if not isinstance(settings, list):
+        problems.append("settings must be a list.")
+    else:
+        seen = set()
+        for i, field in enumerate(settings):
+            _check_setting(field, i, problems, service)
+            key = field.get("key") if isinstance(field, dict) else None
+            if key in seen:
+                problems.append("settings key '%s' is used twice." % key)
+            seen.add(key)
+    sources = data.get("data", [])
+    if not isinstance(sources, list):
+        problems.append("data must be a list.")
+    else:
+        for i, src in enumerate(sources):
+            if not isinstance(src, dict) or not isinstance(src.get("name"), str) or not NAME_RE.match(src["name"]):
+                problems.append("data[%d].name must be a name like 'wikipedia'." % i)
+    if service == "wikipedia-race":
+        wiki = data.get("wikipedia", {})
+        if not isinstance(wiki, dict):
+            problems.append("wikipedia must be an object.")
+        elif "default_list" in wiki and safe_relpath(wiki["default_list"]) is None:
+            problems.append("wikipedia.default_list must be a relative path inside the game.")
+        names = [d.get("name") for d in sources if isinstance(d, dict)] if isinstance(sources, list) else []
+        if "wikipedia" not in names:
+            problems.append("Games that use wikipedia-race must list the 'wikipedia' data source.")
+        if not data.get("scoring"):
+            problems.append("Games that use wikipedia-race need a scoring section.")
+        types = {f.get("key"): f.get("type") for f in settings if isinstance(f, dict)} if isinstance(settings, list) else {}
+        if types.get("start") != "article" or types.get("goal") != "article" or types.get("list") != "article_list":
+            problems.append(
+                "Games that use wikipedia-race need the settings 'start' and 'goal' (type article) "
+                "and 'list' (type article_list)."
+            )
 
-        if service == "photo-guess":
-            photos = data.get("photos", {})
-            if not isinstance(photos, dict) or safe_relpath(photos.get("countries", "")) is None:
-                problems.append("Games that use photo-guess need photos.countries: the path of their countries file.")
-            maps = photos.get("maps") if isinstance(photos, dict) else None
-            if not isinstance(maps, list) or not maps or not all(
-                isinstance(m, dict) and isinstance(m.get("id"), str) and MAP_ID_RE.match(m["id"])
-                and isinstance(m.get("title"), str) and isinstance(m.get("scale_km"), (int, float)) and m["scale_km"] > 0
-                for m in maps
-            ):
-                problems.append("Games that use photo-guess need photos.maps: a list of {id, title, scale_km}.")
-            elif "world" not in [m["id"] for m in maps]:
-                problems.append("photos.maps needs a map with the id 'world'.")
-            weights = photos.get("weights", {}) if isinstance(photos, dict) else {}
-            if not isinstance(weights, dict) or not all(
-                k in ("country", "location") and isinstance(v, (int, float)) and 0 <= v <= 4 for k, v in weights.items()
-            ):
-                problems.append("photos.weights must give each mode (country, location) a power from 0 to 4.")
-            for key in ("max_share", "max_photo_ratio"):
-                v = photos.get(key) if isinstance(photos, dict) else None
-                if v is not None and (not isinstance(v, (int, float)) or v <= 0):
-                    problems.append("photos.%s must be a number above 0." % key)
-            names = [d.get("name") for d in sources if isinstance(d, dict)] if isinstance(sources, list) else []
-            if "photo-packs" not in names:
-                problems.append("Games that use photo-guess must list the 'photo-packs' data source.")
-            if not data.get("scoring"):
-                problems.append("Games that use photo-guess need a scoring section.")
-            types = {f.get("key"): f.get("type") for f in settings if isinstance(f, dict)} if isinstance(settings, list) else {}
-            if types.get("map") != "photo_map" or types.get("rounds") != "integer":
-                problems.append("Games that use photo-guess need the settings 'map' (type photo_map) and 'rounds' (type integer).")
-            mode = [f for f in settings if isinstance(f, dict) and f.get("key") == "mode"] if isinstance(settings, list) else []
-            if mode and (mode[0].get("type") != "choice" or not set(c.get("value") for c in mode[0].get("choices") or []
-                                                                  if isinstance(c, dict)) <= {"country", "location"}):
-                problems.append("A photo-guess game's 'mode' setting must be a choice of 'country' and 'location'.")
+    if service == "photo-guess":
+        photos = data.get("photos", {})
+        if not isinstance(photos, dict) or safe_relpath(photos.get("countries", "")) is None:
+            problems.append("Games that use photo-guess need photos.countries: the path of their countries file.")
+        maps = photos.get("maps") if isinstance(photos, dict) else None
+        if not isinstance(maps, list) or not maps or not all(
+            isinstance(m, dict) and isinstance(m.get("id"), str) and MAP_ID_RE.match(m["id"])
+            and isinstance(m.get("title"), str) and isinstance(m.get("scale_km"), (int, float)) and m["scale_km"] > 0
+            for m in maps
+        ):
+            problems.append("Games that use photo-guess need photos.maps: a list of {id, title, scale_km}.")
+        elif "world" not in [m["id"] for m in maps]:
+            problems.append("photos.maps needs a map with the id 'world'.")
+        weights = photos.get("weights", {}) if isinstance(photos, dict) else {}
+        if not isinstance(weights, dict) or not all(
+            k in ("country", "location") and isinstance(v, (int, float)) and 0 <= v <= 4 for k, v in weights.items()
+        ):
+            problems.append("photos.weights must give each mode (country, location) a power from 0 to 4.")
+        for key in ("max_share", "max_photo_ratio"):
+            v = photos.get(key) if isinstance(photos, dict) else None
+            if v is not None and (not isinstance(v, (int, float)) or v <= 0):
+                problems.append("photos.%s must be a number above 0." % key)
+        names = [d.get("name") for d in sources if isinstance(d, dict)] if isinstance(sources, list) else []
+        if "photo-packs" not in names:
+            problems.append("Games that use photo-guess must list the 'photo-packs' data source.")
+        if not data.get("scoring"):
+            problems.append("Games that use photo-guess need a scoring section.")
+        types = {f.get("key"): f.get("type") for f in settings if isinstance(f, dict)} if isinstance(settings, list) else {}
+        if types.get("map") != "photo_map" or types.get("rounds") != "integer":
+            problems.append("Games that use photo-guess need the settings 'map' (type photo_map) and 'rounds' (type integer).")
+        mode = [f for f in settings if isinstance(f, dict) and f.get("key") == "mode"] if isinstance(settings, list) else []
+        if mode and (mode[0].get("type") != "choice" or not set(c.get("value") for c in mode[0].get("choices") or []
+                                                              if isinstance(c, dict)) <= {"country", "location"}):
+            problems.append("A photo-guess game's 'mode' setting must be a choice of 'country' and 'location'.")
 
     if problems:
         raise ManifestError(problems)

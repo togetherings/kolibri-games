@@ -50,10 +50,10 @@ def card(service, game, player):
         data.update(game.manifest.to_public())
         if game.playable:
             data["summary"] = service.summary(game, player)
-            if not game.is_classroom:
+            if not game.in_channel:
                 data["free_play_scoreboard"] = game.manifest.free_play_scoreboard
                 data["challenges"] = service.challenges_for(game, player)
-    if game.is_classroom:
+    if game.in_channel:
         data["resources"] = [r.public() for r in game.resources]
     return data
 

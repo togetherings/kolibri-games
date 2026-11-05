@@ -8,10 +8,11 @@ from kolibri_games import manifest as mf
 from kolibri_games import ranking
 from kolibri_games.sources import FolderSource
 from kolibri_games.versions import VersionError, parse_version, satisfies
-from tests.helpers import GAMES, Attempt
+from tests.helpers import GAMES, Attempt, all_games
 
 VALID = {
     "format": 1,
+    "type": "scored",
     "id": "org.example.test-game",
     "version": "1.0.0",
     "title": "Test",
@@ -38,8 +39,8 @@ def test_versions():
 
 
 def test_sample_games_are_valid():
-    for name in os.listdir(GAMES):
-        with open(os.path.join(GAMES, name, "kolibri-game.json")) as f:
+    for folder in all_games():
+        with open(os.path.join(folder, "kolibri-game.json")) as f:
             m = mf.loads(f.read())
         assert m.entry == "index.html"
 
@@ -54,7 +55,7 @@ def test_manifest_defaults():
 
 
 def test_manifest_without_scoring_has_no_scoreboard_settings():
-    data = dict(VALID)
+    data = dict(VALID, type="saved")
     del data["scoring"]
     m = mf.validate(data)
     assert not m.has_scores
@@ -165,6 +166,36 @@ def test_scoreboard_visibility():
 
 def test_manifest_json_files_are_pretty():
     # Catches accidental edits that break the sample manifests' formatting.
-    for name in os.listdir(GAMES):
-        with open(os.path.join(GAMES, name, "kolibri-game.json")) as f:
+    for folder in all_games():
+        with open(os.path.join(folder, "kolibri-game.json")) as f:
             json.load(f)
+
+
+def test_the_three_kinds_of_game():
+    saved = dict(VALID, type="saved")
+    del saved["scoring"]
+    assert mf.validate(saved).channel_spec is None and mf.validate(saved).in_channels
+    for bad, why in [
+        (dict(VALID, type="free-play"), "type must be 'saved', 'scored' or 'server'"),
+        (dict(VALID, type="saved"), "Saved Games don't keep scores"),
+        (dict(VALID, type="scored", scoring=None), "Scored Games need a scoring section"),
+        (dict(VALID, type="scored", service="photo-guess"), "Only Server Games"),
+        (dict(VALID, type="server"), "Server Games need a service"),
+        (dict(VALID, type="scored", data=[{"name": "wikipedia"}]), "'data' is only for Server Games"),
+    ]:
+        with pytest.raises(mf.ManifestError) as e:
+            mf.validate(bad)
+        assert any(why in p for p in e.value.problems), (why, e.value.problems)
+    server = mf.validate(json.load(open(os.path.join(GAMES, "wiki-blaze", "kolibri-game.json"))))
+    assert server.is_server and not server.in_channels
+
+
+def test_kit_games_get_scoreboards_from_their_scoring():
+    m = mf.validate(dict(VALID, scoring={"label": "Guesses", "order": "asc", "tiebreak": "seconds"}))
+    spec = m.channel_spec
+    assert [f["key"] for f in spec["fields"]] == ["score", "time", "plays"]
+    assert spec["rank_by"] == ["score", "time"] and spec["fields"][0]["order"] == "asc"
+    assert spec["fields"][0]["label"] == "Guesses" and spec["name_boards_after_resource"]
+    assert mf.validate(dict(VALID, languages=["en", "fr", "pt-BR"])).languages == ["en", "fr", "pt-BR"]
+    with pytest.raises(mf.ManifestError):
+        mf.validate(dict(VALID, languages=["English"]))

@@ -3,8 +3,8 @@ Database tables. Learners, classes and facilities are stored by their Kolibri
 ids (32-character hex strings) rather than foreign keys, so these migrations
 never depend on the migration history of Kolibri's own apps.
 
-Classroom Games add no tables: their scores are read from Kolibri's own
-records (see store_django.classroom_saves).
+Games in channels add no tables: their scores are read from Kolibri's own
+records (see store_django.channel_saves).
 """
 import json
 

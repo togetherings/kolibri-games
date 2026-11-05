@@ -8,7 +8,7 @@ tests or the preview server (``MemoryStore``).
 
 Words used here:
 
-* free play: playing a Free-play Game whenever you like, with the settings a
+* free play: playing a game on the games page whenever you like, with the settings a
   coach chose for the whole facility. Attempts have no challenge.
 * challenge: a coach sets up a game for one class, with its own settings and
   open and close dates. Each challenge has its own scoreboard.
@@ -19,7 +19,7 @@ import threading
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 
-from . import classroom, photoguess, photos, ranking, wiki, wikirace
+from . import channel, photoguess, photos, ranking, wiki, wikirace
 from .manifest import clean_settings, merge_settings
 
 MAX_EVENTS = 2000
@@ -162,9 +162,9 @@ class Store(object):
     def article_list_delete(self, article_list):
         raise NotImplementedError
 
-    # Classroom Games
-    def classroom_saves(self, content_ids, facility_id, user_id=None):
-        """Saved data of Classroom Game resources: a list of dicts with
+    # Scored Games in channels
+    def channel_saves(self, content_ids, facility_id, user_id=None):
+        """Saved data of game resources in channels: a list of dicts with
         user_id, user_name, content_id and content_state (Kolibri's saved state)."""
         raise NotImplementedError
 
@@ -203,28 +203,37 @@ class GameService(object):
     def settings(self, game, facility_id):
         """(platform values, game values) for free play in this facility, defaults filled in."""
         stored = self.store.settings_get(game.key, facility_id) or {}
-        m = game.manifest
+        platform_schema, game_schema = self._schemas(game)
         return (
-            merge_settings(m.platform_settings_schema(), stored.get("platform")),
-            merge_settings(m.settings, stored.get("game")),
+            merge_settings(platform_schema, stored.get("platform")),
+            merge_settings(game_schema, stored.get("game")),
         )
+
+    @staticmethod
+    def _schemas(game):
+        """(platform settings, game settings). A game in a channel only has the scoreboard setting:
+        its own settings are for the games page."""
+        in_channel = getattr(game, "in_channel", False)
+        return game.manifest.platform_settings_schema(in_channel), [] if in_channel else game.manifest.settings
 
     def schema(self, game, facility_id):
         """The settings form. Article list choices are filled in from this facility's lists."""
         fields = []
-        for f in game.manifest.settings:
+        platform_schema, game_schema = self._schemas(game)
+        for f in game_schema:
             f = dict(f)
             if f["type"] == "article_list":
                 f["choices"] = self.list_choices(game, facility_id)
             elif f["type"] == "photo_map":
                 f["choices"] = self.map_choices(game)
             fields.append(f)
-        return {"platform": game.manifest.platform_settings_schema(), "game": fields}
+        return {"platform": platform_schema, "game": fields}
 
     def save_settings(self, game, facility_id, platform, values, by_user_id):
         m = game.manifest
-        p_vals, p_err = clean_settings(m.platform_settings_schema(), platform or {})
-        g_vals, g_err = clean_settings(m.settings, values or {})
+        platform_schema, game_schema = self._schemas(game)
+        p_vals, p_err = clean_settings(platform_schema, platform or {})
+        g_vals, g_err = clean_settings(game_schema, values or {})
         errors = dict(p_err, **g_err)
         if not errors and m.service == "wikipedia-race":
             # Free play: a blank start and goal means a new random pair each time.
@@ -703,9 +712,9 @@ class GameService(object):
 
     def summary(self, game, player):
         """The player's own results, for game cards and the game's hello message."""
-        if game.manifest.is_classroom:
-            mine = self.store.classroom_saves(game.content_ids, player.facility_id, player.id)
-            return classroom.summary(game, mine)
+        if getattr(game, "in_channel", False):
+            mine = self.store.channel_saves(game.content_ids, player.facility_id, player.id)
+            return channel.summary(game, mine)
         platform, _ = self.settings(game, player.facility_id)
         counts = platform.get("counts", "first")
         mine = [a for a in self.store.attempts(game.key, player.facility_id, FREE_PLAY, player.id) if not a.voided]
@@ -843,6 +852,8 @@ class GameService(object):
 
     def save_challenge(self, game, coach, data, class_names, challenge_id=None):
         """Create or change a challenge. ``class_names`` maps the coach's class ids to names."""
+        if not game.manifest.has_scores:
+            raise PlatformError("Saved Games have no score, so they can't be challenges.", "no_scores", 409)
         data = data if isinstance(data, dict) else {}
         errors = {}
         title = (data.get("title") or "").strip()
@@ -1032,18 +1043,18 @@ class GameService(object):
         self.store.article_list_delete(row)
         return {"ok": True}
 
-    # ======================================================== Classroom Games
+    # ======================================================== Scored Games in channels
 
-    def classroom_scoreboards(self, game, viewer, user_ids=None):
-        """Scoreboards of a Classroom Game, read from Kolibri's saved data."""
-        if not game.manifest.is_classroom:
-            raise PlatformError("This game has no scoreboards.", "not_classroom", 404)
+    def channel_scoreboards(self, game, viewer, user_ids=None):
+        """Scoreboards of a Scored Game in channels, read from Kolibri's saved data."""
+        if not getattr(game, "in_channel", False):
+            raise PlatformError("This game has no channel scoreboards.", "not_in_channel", 404)
         platform, _ = self.settings(game, viewer.facility_id)
         visibility = "names" if viewer.is_coach else platform.get("scoreboard", "names")
-        saves = self.store.classroom_saves(game.content_ids, viewer.facility_id)
+        saves = self.store.channel_saves(game.content_ids, viewer.facility_id)
         if user_ids is not None:
             saves = [s for s in saves if s["user_id"] in user_ids]
-        return classroom.scoreboards(game, saves, viewer.id, visibility)
+        return channel.scoreboards(game, saves, viewer.id, visibility)
 
     # ======================================================== saved data
 
@@ -1178,15 +1189,15 @@ class MemoryStore(Store):
     def article_list_delete(self, article_list):
         self._lists = [x for x in self._lists if x.id != article_list.id]
 
-    def add_classroom_save(self, player, content_id, content_state):
-        """Pretend a learner played a Classroom Game resource in Learn (tests and the preview server)."""
+    def add_channel_save(self, player, content_id, content_state):
+        """Pretend a learner played a game resource in a channel, in Learn (tests and the preview server)."""
         self._saves = [s for s in self._saves if not (s["user_id"] == player.id and s["content_id"] == content_id)]
         self._saves.append({
             "user_id": player.id, "user_name": player.name, "facility_id": player.facility_id,
             "content_id": content_id, "content_state": content_state,
         })
 
-    def classroom_saves(self, content_ids, facility_id, user_id=None):
+    def channel_saves(self, content_ids, facility_id, user_id=None):
         wanted = set(content_ids)
         return [
             s for s in self._saves

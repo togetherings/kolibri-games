@@ -2,6 +2,22 @@
 
 ## 0.2.0
 
+- **Three kinds of game,** set by `type` in `kolibri-game.json` (now required): **Saved Games**
+  (`"saved"`) keep each learner's progress; **Scored Games** (`"scored"`) also keep a score, for
+  scoreboards and challenges; **Server Games** (`"server"`) use one of the plugin's services, like
+  Wiki BLAZE. Any kind can be installed on the games page. Saved and Scored Games can also be put
+  in Kolibri channels, and work outside Kolibri too: make them with
+  [EduGame Kit](https://github.com/togetherings/edugame-kit). This replaces Free-play Games and
+  Classroom Games (`"free-play"` and `"classroom"` are gone).
+- Scored Games in channels made with EduGame Kit need only a `scoring` section: the scoreboard
+  is read from the board `main`, and save data under keys starting with `_` is skipped. Saved
+  Games in channels are left alone, and Server Games in channels are shown as a problem.
+- The games page shows a game's kind next to its title. Saved Games have a **Play** button and
+  no scoreboard or challenges. Games from channels are listed under **Scored Games in Learn**.
+- Manifests can list the `languages` a game can be played in.
+- Game keys on the games page start with `g-` (they were `f-`).
+- Number Hunt and Memory Match have moved to EduGame Kit as its examples, so they're no longer
+  attached to releases here (copies stay in `tests/fixtures/games` for the tests).
 - **Wiki BLAZE** (Browsing Links A-to-Z Exploration): race from one Wikipedia article to another
   by following links, using a Wikipedia `.zim` file on the device. The server checks every link
   and keeps each learner's chain. Going back to an earlier article is free, and the score is the
@@ -21,12 +37,12 @@
   Close buttons always work, "open now" uses the server's own time, coaches see a warning when the
   server's clock and their device disagree by more than 10 minutes, and game times aren't thrown
   off when the clock jumps (for example when the Pi reaches the internet).
-- **Installing Free-play Games:** device administrators install, update, roll back and remove
+- **Installing games:** device administrators install, update, roll back and remove
   games on the Setup page. Games are zips (made with `kolibri-games-pack` or any zip tool).
   `kolibri-games-pack` checks a game without needing the data it uses on a device (photo packs,
   Wikipedia), so it works on any computer.
 - The Wikipedia file for Wiki BLAZE is chosen on the Setup page.
-- Free-play Games are no longer ZIM files, and rule checkers are gone: games report their own
+- Games are no longer ZIM files, and rule checkers are gone: games report their own
   scores, and impossible scores are refused. The "unchecked" label is gone too.
 - Game SDK version 2: `KolibriGames.move()` replaces `event()`, and `call()` is removed.
 - libzim is only needed for Wiki BLAZE; the installer installs it and carries on without it if it
@@ -39,7 +55,7 @@
   from Learn as usual, and the games page shows scoreboards made from the scores the app saves
   in SCORM `cmi.suspend_data`. Add a `kolibri-game.json` with `"type": "classroom"` to the app's zip
   to say how to read the scores. All resources with the same game id form one game, and a board
-  saved by more than one resource keeps each learner's best result. See `docs/CLASSROOM_GAMES.md`.
+  saved by more than one resource keeps each learner's best result. See `docs/CHANNEL_GAMES.md`.
 - Example Classroom Game manifests for Lessons In Typing and Studies In Geography.
 - Coaches choose per game what learners see on scoreboards (full names by default), show one
   class at a time and download scoreboards as CSV.
@@ -48,7 +64,7 @@
   0.1.0 need one change: call `KolibriGames.scoreboard()` instead of `KolibriGames.leaderboard()`.
 - A **Games** link in Kolibri's side menu.
 - Signing in from the games page now brings you back to the game you opened.
-- The preview server can pretend Classroom Games were played (`--classroom`).
+- The preview server can pretend Classroom Games were played (`--channel`).
 
 ## 0.1.0
 

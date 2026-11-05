@@ -5,14 +5,14 @@ import zipfile
 
 import pytest
 
-from kolibri_games import classroom
+from kolibri_games import channel
 from kolibri_games import manifest as mf
 from kolibri_games.registry import check
 from kolibri_games.service import GameService, MemoryStore, Player
 from kolibri_games.sources import FolderSource, ZipSource
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXAMPLES = os.path.join(ROOT, "examples", "classroom-games")
+EXAMPLES = os.path.join(ROOT, "examples", "channel-games")
 FACILITY = "f" * 32
 AMINA = Player("a" * 32, "Amina Learner", FACILITY)
 BEN = Player("b" * 32, "Ben Learner", FACILITY)
@@ -25,7 +25,7 @@ def example(name):
 
 def resource(name, content_id, title):
     source = FolderSource(os.path.join(EXAMPLES, name))
-    return classroom.ClassroomResource(source, source.manifest(), {"content_id": content_id, "node_id": "n" + content_id[1:], "title": title})
+    return channel.ChannelResource(source, source.manifest(), {"content_id": content_id, "node_id": "n" + content_id[1:], "title": title})
 
 
 def scorm(data):
@@ -34,82 +34,92 @@ def scorm(data):
 
 
 def save(store, player, content_id, data):
-    store.add_classroom_save(player, content_id, scorm(data))
+    store.add_channel_save(player, content_id, scorm(data))
 
 
 # ----------------------------------------------------------------- manifest
 
 
-def test_example_manifests_are_valid_classroom_games():
+def test_example_manifests_are_valid_scored_games():
     for name in ("lit", "singe"):
         m = example(name)
-        assert m.is_classroom and m.scoreboards["rank_by"]
-        assert [f["key"] for f in m.platform_settings_schema()] == ["scoreboard"]
-        assert m.platform_settings_schema()[0]["default"] == "names"
+        assert m.type == "scored" and m.scoreboards["rank_by"] and m.channel_spec is m.scoreboards
+        assert [f["key"] for f in m.platform_settings_schema(in_channel=True)] == ["scoreboard"]
+        assert m.platform_settings_schema(in_channel=True)[0]["default"] == "names"
 
 
-def test_classroom_manifest_problems_are_reported():
+def test_scoreboards_problems_are_reported():
     base = json.load(open(os.path.join(EXAMPLES, "lit", "kolibri-game.json")))
     bad = dict(base, service="wikipedia-race", scoring={"order": "asc"})
     with pytest.raises(mf.ManifestError) as e:
         mf.validate(bad)
-    assert any("can't use 'service'" in p for p in e.value.problems)
+    assert any("Only Server Games" in p for p in e.value.problems)
     sb = dict(base["scoreboards"], rank_by=["nope"], fields=[{"key": "acc", "label": "Accuracy", "combine": "average"}])
     with pytest.raises(mf.ManifestError) as e:
         mf.validate(dict(base, scoreboards=sb))
     text = " ".join(e.value.problems)
     assert "combine" in text and "'nope' isn't one of the fields" in text
-    with pytest.raises(mf.ManifestError):
+    with pytest.raises(mf.ManifestError):  # a Scored Game needs scoring or scoreboards
         mf.validate(dict(base, scoreboards=None))
     with pytest.raises(mf.ManifestError):
         mf.validate(dict(base, type="arcade"))
 
 
-def test_free_play_games_cant_have_scoreboards_and_classroom_games_arent_playable_locally():
-    data = json.load(open(os.path.join(ROOT, "games", "number-hunt", "kolibri-game.json")))
+def test_only_scored_games_have_scoreboards():
+    data = json.load(open(os.path.join(ROOT, "games", "wiki-blaze", "kolibri-game.json")))
     with pytest.raises(mf.ManifestError):
-        mf.validate(dict(data, scoreboards={}))
-    m = example("lit")
-    assert "Classroom Game" in check(m, FolderSource(os.path.join(EXAMPLES, "lit")))[0]
+        mf.validate(dict(data, scoreboards={}))  # a Server Game
+    saved = {k: v for k, v in data.items() if k not in ("service", "data", "wikipedia", "scoring", "settings")}
+    with pytest.raises(mf.ManifestError):
+        mf.validate(dict(saved, type="saved", scoreboards={}))
+
+
+def test_kit_games_scores_are_read_and_their_saves_skipped():
+    # A Scored Game made with edugame-kit keeps [best score, seconds, plays] under "main",
+    # and its own save under keys starting with "_".
+    m = mf.validate({"format": 1, "type": "scored", "id": "org.example.kit-game", "version": "1.0.0",
+                     "title": "Kit game", "scoring": {"label": "Guesses", "order": "asc"}})
+    found = channel.read_boards(m.channel_spec, scorm({"_v": 1, "_save": {"level": 3, "stars": [1, 2]}, "main": [7, 41.5, 3]}))
+    assert found == {"main": {"score": 7, "time": 41.5, "plays": 3}}
 
 
 # ----------------------------------------------------------- reading data
 
 
 def test_suspend_data_is_read_from_nested_or_flat_scorm_keys():
-    assert classroom.suspend_data(scorm({"a": 1})) == {"a": 1}
-    assert classroom.suspend_data({"SCORM": {"cmi.suspend_data": '{"b": 2}'}}) == {"b": 2}
+    assert channel.suspend_data(scorm({"a": 1})) == {"a": 1}
+    assert channel.suspend_data({"SCORM": {"cmi.suspend_data": '{"b": 2}'}}) == {"b": 2}
     for broken in (None, {}, {"SCORM": {}}, {"SCORM": {"cmi": {"suspend_data": "not json"}}},
                    {"SCORM": {"cmi": {"suspend_data": "[1, 2]"}}}, {"SCORM": {"cmi": {"suspend_data": "x" * 70000}}}):
-        assert classroom.suspend_data(broken) is None
+        assert channel.suspend_data(broken) is None
 
 
 def test_reading_lit_skips_unfinished_lessons():
     spec = example("lit").scoreboards
-    found = classroom.read_boards(spec, scorm({"en-01": {"done": 1, "acc": 96, "wpm": 14}, "en-02": {"done": 0, "acc": 0, "wpm": 0}}))
+    found = channel.read_boards(spec, scorm({"en-01": {"done": 1, "acc": 96, "wpm": 14}, "en-02": {"done": 0, "acc": 0, "wpm": 0}}))
     assert found == {"en-01": {"acc": 96, "wpm": 14}}
 
 
 def test_reading_singe_lists_by_position_and_ignores_junk():
     spec = example("singe").scoreboards
-    found = classroom.read_boards(spec, scorm({"us": [92, 140, 5], "us_flags": ["70", 99.5, 1], "bad": "x", "": [1, 2, 3]}))
+    found = channel.read_boards(spec, scorm({"us": [92, 140, 5], "us_flags": ["70", 99.5, 1], "bad": "x", "": [1, 2, 3]}))
     assert found == {"us": {"acc": 92, "time": 140, "plays": 5}, "us_flags": {"acc": 70, "time": 99.5, "plays": 1}}
 
 
 def test_board_names_from_rules_and_names():
     spec = example("singe").scoreboards
-    assert classroom.board_name(spec, "us") == "United States: regions"
-    assert classroom.board_name(spec, "us_capitals") == "United States: capitals"
-    assert classroom.board_name(spec, "world_all_flags") == "World (all countries): flags"
-    assert classroom.board_name(spec, "mars_flags") == "mars: flags"
-    assert classroom.board_name(example("lit").scoreboards, "en-01") is None
+    assert channel.board_name(spec, "us") == "United States: regions"
+    assert channel.board_name(spec, "us_capitals") == "United States: capitals"
+    assert channel.board_name(spec, "world_all_flags") == "World (all countries): flags"
+    assert channel.board_name(spec, "mars_flags") == "mars: flags"
+    assert channel.board_name(example("lit").scoreboards, "en-01") is None
 
 
 # ---------------------------------------------------------- scoreboards
 
 
 def singe_game():
-    return classroom.group_resources([resource("singe", "4" * 32, "Maps of Sierra Leone"), resource("singe", "5" * 32, "Maps of the world")])[0]
+    return channel.group_resources([resource("singe", "4" * 32, "Maps of Sierra Leone"), resource("singe", "5" * 32, "Maps of the world")])[0]
 
 
 def test_reused_boards_merge_best_result_and_add_up_plays():
@@ -118,7 +128,7 @@ def test_reused_boards_merge_best_result_and_add_up_plays():
     save(store, AMINA, "4" * 32, {"sierra_leone": [92, 140, 5]})
     save(store, AMINA, "5" * 32, {"sierra_leone": [100, 300, 1]})
     save(store, BEN, "4" * 32, {"sierra_leone": [100, 200, 2]})
-    data = GameService(store).classroom_scoreboards(game, AMINA)
+    data = GameService(store).channel_scoreboards(game, AMINA)
     board = data["boards"][0]
     assert board["name"] == "Sierra Leone: regions" and board["players"] == 2
     assert [r["name"] for r in board["rows"]] == ["Ben Learner", "Amina Learner"]  # same accuracy, Ben was faster
@@ -128,16 +138,16 @@ def test_reused_boards_merge_best_result_and_add_up_plays():
 
 
 def test_speed_ranks_higher_first_and_time_ranks_lower_first():
-    lit = classroom.group_resources([resource("lit", "1" * 32, "Lesson 1")])[0]
+    lit = channel.group_resources([resource("lit", "1" * 32, "Lesson 1")])[0]
     store = MemoryStore()
     save(store, AMINA, "1" * 32, {"en-01": {"done": 1, "acc": 95, "wpm": 12}})
     save(store, BEN, "1" * 32, {"en-01": {"done": 1, "acc": 95, "wpm": 20}})
-    rows = GameService(store).classroom_scoreboards(lit, COACH)["boards"][0]["rows"]
+    rows = GameService(store).channel_scoreboards(lit, COACH)["boards"][0]["rows"]
     assert [r["name"] for r in rows] == ["Ben Learner", "Amina Learner"]  # same accuracy, more wpm wins
     store = MemoryStore()
     save(store, AMINA, "4" * 32, {"us": [95, 90, 1]})
     save(store, BEN, "4" * 32, {"us": [95, 60, 1]})
-    rows = GameService(store).classroom_scoreboards(singe_game(), COACH)["boards"][0]["rows"]
+    rows = GameService(store).channel_scoreboards(singe_game(), COACH)["boards"][0]["rows"]
     assert [r["name"] for r in rows] == ["Ben Learner", "Amina Learner"]  # same accuracy, less time wins
 
 
@@ -147,7 +157,7 @@ def test_ties_share_a_rank_and_missing_values_rank_last():
     save(store, AMINA, "4" * 32, {"us": [90, 100, 1]})
     save(store, BEN, "4" * 32, {"us": [90, 100, 1]})
     save(store, COACH, "4" * 32, {"us": [None, None, 4]})
-    rows = GameService(store).classroom_scoreboards(game, COACH)["boards"][0]["rows"]
+    rows = GameService(store).channel_scoreboards(game, COACH)["boards"][0]["rows"]
     assert [r["rank"] for r in rows] == [1, 1, 3]
 
 
@@ -157,14 +167,14 @@ def test_visibility_setting_applies_to_learners_but_not_coaches():
     service = GameService(store)
     save(store, AMINA, "4" * 32, {"us": [80, 100, 1]})
     save(store, BEN, "4" * 32, {"us": [90, 100, 1]})
-    rows = service.classroom_scoreboards(game, AMINA)["boards"][0]["rows"]
+    rows = service.channel_scoreboards(game, AMINA)["boards"][0]["rows"]
     assert [r["name"] for r in rows] == ["Ben Learner", "Amina Learner"]  # full names by default
     service.save_settings(game, FACILITY, {"scoreboard": "initials"}, {}, COACH.id)
-    assert [r["name"] for r in service.classroom_scoreboards(game, AMINA)["boards"][0]["rows"]] == ["B.L.", "Amina Learner"]
+    assert [r["name"] for r in service.channel_scoreboards(game, AMINA)["boards"][0]["rows"]] == ["B.L.", "Amina Learner"]
     service.save_settings(game, FACILITY, {"scoreboard": "hidden"}, {}, COACH.id)
-    rows = service.classroom_scoreboards(game, AMINA)["boards"][0]["rows"]
+    rows = service.channel_scoreboards(game, AMINA)["boards"][0]["rows"]
     assert [(r["rank"], r["name"]) for r in rows] == [(2, "Amina Learner")]
-    assert len(service.classroom_scoreboards(game, COACH)["boards"][0]["rows"]) == 2
+    assert len(service.channel_scoreboards(game, COACH)["boards"][0]["rows"]) == 2
 
 
 def test_class_filter_and_other_facilities():
@@ -173,17 +183,17 @@ def test_class_filter_and_other_facilities():
     save(store, AMINA, "4" * 32, {"us": [80, 100, 1]})
     save(store, BEN, "4" * 32, {"us": [90, 100, 1]})
     save(store, Player("e" * 32, "Elsewhere", "9" * 32), "4" * 32, {"us": [99, 1, 1]})
-    data = GameService(store).classroom_scoreboards(game, COACH, user_ids={AMINA.id})
+    data = GameService(store).channel_scoreboards(game, COACH, user_ids={AMINA.id})
     assert [r["name"] for r in data["boards"][0]["rows"]] == ["Amina Learner"]
 
 
 def test_lit_boards_are_named_after_their_resource_and_summary_counts_mine():
-    game = classroom.group_resources([resource("lit", "1" * 32, "Lesson 1: Left-hand home keys"), resource("lit", "2" * 32, "Lesson 10: Numbers")])[0]
+    game = channel.group_resources([resource("lit", "1" * 32, "Lesson 1: Left-hand home keys"), resource("lit", "2" * 32, "Lesson 10: Numbers")])[0]
     store = MemoryStore()
     service = GameService(store)
     save(store, AMINA, "1" * 32, {"en-01": {"done": 1, "acc": 96, "wpm": 14}})
     save(store, BEN, "2" * 32, {"en-10": {"done": 1, "acc": 90, "wpm": 20}, "fr-10": {"done": 1, "acc": 80, "wpm": 10}})
-    names = [b["name"] for b in service.classroom_scoreboards(game, AMINA)["boards"]]
+    names = [b["name"] for b in service.channel_scoreboards(game, AMINA)["boards"]]
     assert names == ["Lesson 1: Left-hand home keys", "Lesson 10: Numbers (en-10)", "Lesson 10: Numbers (fr-10)"]
     assert service.summary(game, AMINA) == {"boards": 1, "resources": 2}
 
@@ -195,13 +205,13 @@ def test_resources_group_into_one_game_per_id_using_the_newest_manifest():
     old["scoreboards"]["board_names"] = {"mars": "Mars"}
     old_m = mf.validate(old)
     new = resource("singe", "5" * 32, "World")
-    older = classroom.ClassroomResource(new.source, old_m, {"content_id": "6" * 32, "node_id": "x", "title": "Mars maps"})
+    older = channel.ChannelResource(new.source, old_m, {"content_id": "6" * 32, "node_id": "x", "title": "Mars maps"})
     copy = resource("singe", "5" * 32, "World (copy in another channel)")
-    games = classroom.group_resources([older, new, copy, resource("lit", "1" * 32, "Lesson 1")])
+    games = channel.group_resources([older, new, copy, resource("lit", "1" * 32, "Lesson 1")])
     singe = [g for g in games if g.manifest.id == "org.togetherings.singe"][0]
     assert singe.key == "c-org.togetherings.singe" and singe.title == "Studies In Geography"
     assert sorted(singe.content_ids) == ["5" * 32, "6" * 32]
-    assert classroom.board_name(singe.spec, "mars_flags") == "Mars: flags"
+    assert channel.board_name(singe.spec, "mars_flags") == "Mars: flags"
     assert len(games) == 2
 
 

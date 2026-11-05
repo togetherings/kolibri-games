@@ -5,10 +5,11 @@ offline learning games, built with [Internet-in-a-Box](https://internet-in-a-box
 
 - **Games are content, not code in the plugin.** Every game is a zip of web files, so adding a
   game never means changing the plugin.
-- **Two kinds of game.** *Free-play Games* are installed on the games page's Setup page and played
-  there, anytime or in a class challenge. *Classroom Games* are ordinary HTML5 apps in Kolibri
-  channels that learners open from Learn and coaches assign in lessons; the games page shows
-  scoreboards from the scores they save.
+- **Three kinds of game.** *Saved Games* keep each learner's progress. *Scored Games* also keep a
+  score, for scoreboards and challenges. *Server Games*, like Wiki BLAZE, need this plugin's server
+  to run their rules. Any of them can be installed on the games page. Saved and Scored Games can
+  also be ordinary HTML5 apps in Kolibri channels, which learners open from Learn and coaches
+  assign in lessons; the games page shows scoreboards from the scores they save.
 - **Challenges.** Coaches set a game up for a class, with its own settings, dates and scoreboard.
 - **Learners sign in with Kolibri.** Results are saved to their account.
 - **Coaches stay in control.** They can see every learner's attempts and moves, export results
@@ -21,10 +22,15 @@ Games attached to each release:
 - **Wiki BLAZE** (Browsing Links A-to-Z Exploration): race from one Wikipedia article to another
   by following links, using the Wikipedia file already on the device. See
   [docs/WIKI_BLAZE.md](docs/WIKI_BLAZE.md).
-- **Number Hunt** and **Memory Match**, two small sample games.
+More games:
 
-Example Classroom Game manifests for Lessons In Typing and Studies In Geography are in
-[examples/classroom-games](examples/classroom-games).
+- **[BeaconHunt](https://github.com/togetherings/beacon-hunt)**: guess where a street photo was
+  taken (a Server Game).
+- Saved and Scored Games made with **[EduGame Kit](https://github.com/togetherings/edugame-kit)**,
+  which also work in Moodle, RACHEL, Sugarizer and Kiwix.
+
+Example manifests for Scored Games in channels (Lessons In Typing and Studies In Geography) are
+in [examples/channel-games](examples/channel-games).
 
 ## Install
 
@@ -57,12 +63,12 @@ account, and come straight back to the games page afterwards.
 
 ### Adding games
 
-- **Free-play Games:** on the games page, open **Setup**, choose the game's `.zip` file and click
+- **On the games page:** open **Setup**, choose the game's `.zip` file and click
   **Install**. Installing a newer version keeps the old one, so you can go back. (Copying the
   zip into `<KOLIBRI_HOME>/kolibri_games/games/` works too; on IIAB that's
   `/library/kolibri/kolibri_games/games/`.) Only device administrators can install games.
-- **Classroom Games:** import a Kolibri channel that contains them. They appear on the games page
-  automatically.
+- **In a channel:** import a Kolibri channel that contains Saved or Scored Games. Learners find
+  them in Learn, and Scored Games appear on the games page automatically.
 - **Wiki BLAZE** also needs a Wikipedia `.zim` file: choose it on the Setup page.
 
 The games are attached to each [release](https://github.com/togetherings/kolibri-games/releases)
@@ -74,17 +80,18 @@ sudo -u kolibri KOLIBRI_HOME=/library/kolibri kolibri manage kolibri_games_check
 
 ## Making games
 
-A Free-play Game is a zip with a `kolibri-game.json` manifest and ordinary web files (HTML,
-JavaScript, CSS, images), using a small JavaScript SDK to start attempts, report moves and finish
-with a score. See **[docs/GAME_FORMAT.md](docs/GAME_FORMAT.md)**.
+A game is a zip with a `kolibri-game.json` manifest and ordinary web files (HTML, JavaScript,
+CSS, images). On the games page it uses a small JavaScript SDK to save progress, start attempts,
+report moves and finish with a score. See **[docs/GAME_FORMAT.md](docs/GAME_FORMAT.md)**.
 
-A Classroom Game is any Kolibri HTML5 app that saves its scores in SCORM `cmi.suspend_data`, plus a
-`kolibri-game.json` that says how to read them. See **[docs/CLASSROOM_GAMES.md](docs/CLASSROOM_GAMES.md)**.
+To make a Saved or Scored Game, start with [EduGame Kit](https://github.com/togetherings/edugame-kit).
+To show scoreboards for an existing HTML5 app that saves scores in SCORM `cmi.suspend_data`, add a
+`kolibri-game.json` that says how to read them. See **[docs/CHANNEL_GAMES.md](docs/CHANNEL_GAMES.md)**.
 
 ```bash
 pip install -e ".[wikipedia]"    # in this repository
 kolibri-games-preview games/ --wikipedia examples/tiny-wiki     # try games without Kolibri
-kolibri-games-preview games/ --classroom examples/classroom-games/preview.json  # with Classroom Games
+kolibri-games-preview games/ --channel examples/channel-games/preview.json  # with games in channels
 kolibri-games-pack games/my-game # package as dist/<id>-<version>.zip
 ```
 

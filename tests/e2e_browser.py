@@ -15,7 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def serve(port):
-    os.environ["KOLIBRI_GAMES_PATH"] = os.path.join(ROOT, "games")
+    os.environ["KOLIBRI_GAMES_PATH"] = os.pathsep.join([os.path.join(ROOT, "games"), os.path.join(ROOT, "tests", "fixtures", "games")])
     import tempfile
 
     os.environ["KOLIBRI_HOME"] = tempfile.mkdtemp(prefix="kolibri-games-e2e-")
@@ -23,14 +23,14 @@ def serve(port):
     from kolibri_games import devserver, registry
 
     os.environ["KOLIBRI_GAMES_DATA_WIKIPEDIA"] = os.path.join(ROOT, "examples", "tiny-wiki")
-    devserver.load_classroom(os.path.join(ROOT, "examples", "classroom-games", "preview.json"))
+    devserver.load_channel(os.path.join(ROOT, "examples", "channel-games", "preview.json"))
     registry.discover(refresh=True)
     server = ThreadingHTTPServer(("127.0.0.1", port), devserver.Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
 
-BLAZE = "f-org.togetherings.wiki-blaze"
+BLAZE = "g-org.togetherings.wiki-blaze"
 
 
 def make_update_zip():
@@ -39,7 +39,7 @@ def make_update_zip():
     import tempfile
     import zipfile
 
-    folder = os.path.join(ROOT, "games", "memory-match")
+    folder = os.path.join(ROOT, "tests", "fixtures", "games", "memory-match")
     path = os.path.join(tempfile.mkdtemp(), "memory-match.zip")
     with zipfile.ZipFile(path, "w") as z:
         for name in os.listdir(folder):
@@ -115,15 +115,17 @@ def main():
             # Lobby as Amina
             page.goto(base + "?as=amina")
             page.locator(".game").first.wait_for()
-            assert page.locator("#free-play .game").count() == 3, "expected three Free-play Games"
-            assert page.locator("#classroom .game").count() == 2, "expected two Classroom Games"
+            assert page.locator("#games-here .game").count() == 4, "expected four games on the games page"
+            assert page.locator("#games-in-learn .game").count() == 2, "expected two Scored Games in Learn"
             sections = page.locator(".shelf-section .shelf-title").all_inner_texts()
-            assert sections == ["Free-play Games", "Classroom Games"], sections
+            assert sections == ["Play here", "Scored Games in Learn"], sections
+            tally = page.locator(".game", has_text="Tally")
+            assert "Saved Game" in tally.inner_text() and "Challenges" not in tally.inner_text(), tally.inner_text()
             if shots:
                 page.screenshot(path=os.path.join(shots, "1-lobby.png"), full_page=True)
 
             # Number Hunt: the game scores itself; the first attempt counts
-            page.goto(base + "#/play/f-org.togetherings.number-hunt")
+            page.goto(base + "#/play/g-org.togetherings.number-hunt")
             frame = page.frame_locator("iframe.game-frame")
             frame.locator("#btn-start").click()
             frame.locator("#play:not([hidden])").wait_for()
@@ -144,10 +146,21 @@ def main():
             frame.locator("#done:not([hidden])").wait_for()
             assert "practice" in frame.locator("#done-standing").inner_text().lower()
             frame.locator("#btn-exit").click()
-            page.locator("#free-play .shelf").wait_for()
+            page.locator("#games-here .shelf").wait_for()
+
+            # Tally, a Saved Game: what it saves is there next time
+            page.goto(base + "#/play/g-org.togetherings.tally")
+            frame = page.frame_locator("iframe.game-frame")
+            frame.locator("#count:text('0')").wait_for()
+            frame.locator("#add").click()
+            frame.locator("#add").click()
+            frame.locator("#count:text('2')").wait_for()
+            page.goto(base + "?as=ben#/")
+            page.goto(base + "?as=amina#/play/g-org.togetherings.tally")
+            page.frame_locator("iframe.game-frame").locator("#count:text('2')").wait_for()
 
             # Memory Match
-            page.goto(base + "#/play/f-org.togetherings.memory-match")
+            page.goto(base + "#/play/g-org.togetherings.memory-match")
             frame = page.frame_locator("iframe.game-frame")
             frame.locator(".card").first.wait_for()
             solve_memory(page, frame)
@@ -252,14 +265,14 @@ def main():
             assert page.locator(".clock-notice").count() == 0  # same clock: no warning
 
             # Coach: free-play settings; learners then see initials
-            page.goto(base + "#/settings/f-org.togetherings.number-hunt")
+            page.goto(base + "#/settings/g-org.togetherings.number-hunt")
             page.locator("form fieldset").first.wait_for()
             page.select_option("#f-g-max", index=0)
             page.select_option("#f-p-scoreboard", index=1)
             page.locator("button:has-text('Save settings')").click()
             page.locator("#toast:not([hidden])").wait_for()
             assert "saved" in page.locator("#toast").inner_text().lower()
-            page.goto(base + "?as=ben#/board/f-org.togetherings.number-hunt")
+            page.goto(base + "?as=ben#/board/g-org.togetherings.number-hunt")
             page.locator("table").wait_for()
             assert "A.L." in page.locator("table").inner_text()
 
@@ -286,7 +299,7 @@ def main():
             page.locator("#toast:has-text('Removed')").wait_for()
             assert page.locator("#wiki-pick").count() == 1
 
-            # Classroom Games: scoreboards read from (pretend) saved data in Learn
+            # Scored Games in Learn: scoreboards read from (pretend) saved data in Learn
             page.goto(base + "?as=amina#/")
             card = page.locator(".game", has_text="Studies In Geography")
             assert "scores on 3 maps" in card.inner_text(), card.inner_text()

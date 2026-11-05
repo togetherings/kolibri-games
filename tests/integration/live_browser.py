@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 from playwright.sync_api import sync_playwright
 
-GAME = "f-org.togetherings.number-hunt"
+GAME = "g-org.togetherings.number-hunt"
 
 
 def main(base, username, password):

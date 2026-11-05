@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "type": "free-play",
+  "type": "server",
   "id": "org.example.photo-test",
   "version": "1.0.0",
   "title": "Photo test",

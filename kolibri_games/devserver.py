@@ -7,14 +7,14 @@ both together.
     kolibri-games-preview path/to/games-folder [--port 8765]
         [--wikipedia examples/tiny-wiki]            (or a Wikipedia .zim file)
         [--photos path/to/photo-packs]              (photo packs for BeaconHunt)
-        [--classroom examples/classroom-games/preview.json]
+        [--channel examples/channel-games/preview.json]
 
 Then open http://127.0.0.1:8765/ and switch between pretend learners, a coach
 and an administrator with the bar at the bottom of the page.
 
-* Game folders (or .zip files) in the folders you name are Free-play Games.
+* Game folders (or .zip files) in the folders you name are installed games (any type).
 * ``--wikipedia`` chooses the Wikipedia data for Wiki BLAZE.
-* ``--classroom`` adds Classroom Games with pretend saved data, as if learners
+* ``--channel`` adds Scored Games in channels, with pretend saved data, as if learners
   had played them in Learn.
 """
 import argparse
@@ -53,19 +53,19 @@ store = MemoryStore()
 service = GameService(store, monotonic=time.monotonic)
 
 
-def load_classroom(path):
-    """Add the Classroom Game resources and pretend saved data described in a JSON file."""
+def load_channel(path):
+    """Add the channel game resources and pretend saved data described in a JSON file."""
     with open(path, encoding="utf-8") as f:
         spec = json.load(f)
     base = os.path.dirname(os.path.abspath(path))
     for r in spec.get("resources", []):
         content = {k: r[k] for k in ("content_id", "node_id", "title")}
         content["channel_id"] = r.get("channel_id", "0" * 32)
-        registry.PREVIEW_CLASSROOM.append((open_source(os.path.join(base, r["source"])), content))
+        registry.PREVIEW_CHANNEL.append((open_source(os.path.join(base, r["source"])), content))
     for save in spec.get("saves", []):
         data = save["suspend_data"]
         state = {"SCORM": {"cmi": {"suspend_data": data if isinstance(data, str) else json.dumps(data)}}}
-        store.add_classroom_save(USERS[save["user"]], save["content_id"], state)
+        store.add_channel_save(USERS[save["user"]], save["content_id"], state)
 
 
 def sign(payload):
@@ -202,7 +202,7 @@ class Handler(BaseHTTPRequestHandler):
         token, _, file_path = rest.partition("/")
         claims = unsign(token)
         game = registry.get(claims.get("k")) if claims else None
-        if game is None or game.manifest is None or game.is_classroom:
+        if game is None or game.manifest is None or game.in_channel:
             return self.send(403, "This game link has expired.", "text/plain")
         if file_path == views_common.SDK_PATH:
             with open(os.path.join(ASSETS, "sdk.js"), "rb") as f:
@@ -224,8 +224,8 @@ class Handler(BaseHTTPRequestHandler):
         game = registry.get(key)
         if game is None or game.manifest is None:
             raise PlatformError("That game isn't on this device.", "not_found", 404)
-        if playable and game.is_classroom:
-            raise PlatformError("This is a Classroom Game. Open it from Learn.", "classroom_game", 409)
+        if playable and game.in_channel:
+            raise PlatformError("This game is in a channel. Open it from Learn.", "in_channel", 409)
         if playable and not game.playable:
             raise PlatformError(" ".join(game.problems), "unplayable", 409)
         return game
@@ -352,7 +352,7 @@ class Handler(BaseHTTPRequestHandler):
         if rest == "/boards" and get:
             users = self.class_users(player, query.get("class")) if player.is_coach else None
             ids = {u for u, _ in users} if users else None
-            data = service.classroom_scoreboards(self.game(key, playable=False), player, user_ids=ids)
+            data = service.channel_scoreboards(self.game(key, playable=False), player, user_ids=ids)
             if query.get("format") == "csv":
                 self.require(player, coach=True)
                 return self.csv(views_common.scoreboards_csv(data))
@@ -415,7 +415,7 @@ def main(argv=None):
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--wikipedia", help="A Wikipedia .zim file (or a folder like examples/tiny-wiki) for Wiki BLAZE.")
-    parser.add_argument("--classroom", help="JSON file with Classroom Game resources and pretend saved data.")
+    parser.add_argument("--channel", help="JSON file with channel game resources and pretend saved data.")
     parser.add_argument("--photos", help="A folder of photo packs for BeaconHunt.")
     args = parser.parse_args(argv)
     if args.folders:
@@ -426,8 +426,8 @@ def main(argv=None):
         os.environ["KOLIBRI_GAMES_DATA_WIKIPEDIA"] = os.path.abspath(args.wikipedia)
     if args.photos:
         os.environ["KOLIBRI_GAMES_DATA_PHOTO_PACKS"] = os.path.abspath(args.photos)
-    if args.classroom:
-        load_classroom(args.classroom)
+    if args.channel:
+        load_channel(args.channel)
     games = registry.discover(refresh=True)
     print("Kolibri Games preview %s" % __version__)
     for g in games:

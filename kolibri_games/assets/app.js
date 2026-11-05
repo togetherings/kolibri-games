@@ -9,7 +9,7 @@
  *   #/results/<game>[/c/<challenge>]    coaches: every learner's attempts
  *   #/challenges/<game>[/new|/edit/<id>]  coaches: set up challenges
  *   #/settings/<game>                   coaches: free-play settings
- *   #/scores/<game>[/<board>[/<class>]] Classroom Games' scoreboards
+ *   #/scores/<game>[/<board>[/<class>]] scoreboards of Scored Games in channels
  *   #/lists[/new|/<id>]                 coaches: Wikipedia article lists
  *   #/status                            administrators: install games, Setup
  *
@@ -250,12 +250,12 @@
         setView([head, emptyShelf()]);
         return;
       }
-      var classroom = games.filter(function (g) { return g.type === "classroom" && g.playable; });
-      var freePlay = games.filter(function (g) { return classroom.indexOf(g) < 0; });
+      var inChannels = games.filter(function (g) { return g.origin === "channel" && g.playable; });
+      var here = games.filter(function (g) { return inChannels.indexOf(g) < 0; });
       setView([
         head,
-        shelfSection("free-play", "Free-play Games", "Play these here, anytime.", freePlay),
-        shelfSection("classroom", "Classroom Games", "Play these in Learn. Here you can see their scoreboards.", classroom)
+        shelfSection("games-here", "Play here", "Play these games here, anytime.", here),
+        shelfSection("games-in-learn", "Scored Games in Learn", "Play these in Learn. Here you can see their scoreboards.", inChannels)
       ]);
     }).catch(showError);
   }
@@ -276,8 +276,8 @@
     return el("div", { class: "empty" }, [
       el("h2", { text: "No games on this device yet" }),
       admin
-        ? el("p", {}, ["Install Free-play Games on the ", el("a", { href: "#/status", text: "Setup page" }),
-            ". Classroom Games come in Kolibri channels."])
+        ? el("p", {}, ["Install games on the ", el("a", { href: "#/status", text: "Setup page" }),
+            ". Saved and Scored Games can also come in Kolibri channels."])
         : el("p", { text: "Ask your coach or administrator to add some." })
     ]);
   }
@@ -296,7 +296,7 @@
     return "../learn/#/topics/c/" + encodeURIComponent(nodeId);
   }
 
-  function classroomCard(g) {
+  function channelCard(g) {
     var s = g.summary || {};
     var label = (g.scoreboards && g.scoreboards.board_label) || "Scoreboard";
     var facts = [
@@ -345,13 +345,22 @@
     ]);
   }
 
+  // The three kinds of game (see manifest.py), shown on each card.
+  var KINDS = { saved: "Saved Game", scored: "Scored Game", server: "Server Game" };
+
+  function kindTag(g) {
+    return KINDS[g.type] ? el("span", { class: "tag kind", text: KINDS[g.type] }) : null;
+  }
+
   function gameCard(g) {
-    if (g.type === "classroom" && g.playable) return classroomCard(g);
+    if (g.origin === "channel" && g.playable) return channelCard(g);
     var unplayable = !g.playable;
     var facts = [];
     var s = g.summary;
     var freeBoard = g.scoring && g.free_play_scoreboard;
-    if (s && freeBoard) {
+    if (g.type === "saved") {
+      facts.push(el("span", { text: "Your progress is saved to your account." }));
+    } else if (s && freeBoard) {
       if (s.counted) {
         facts.push(el("span", {}, ["Your free-play result ", el("b", { text: scoreText(g.scoring, s.counted.score) }), " in " + clock(s.counted.seconds)]));
       } else {
@@ -362,11 +371,12 @@
     }
     var actions = [];
     if (!unplayable) {
-      actions.push(el("a", { class: "button primary", href: "#/play/" + g.key, text: "Free play" }));
+      actions.push(el("a", { class: "button primary", href: "#/play/" + g.key, text: g.type === "saved" ? "Play" : "Free play" }));
       if (freeBoard) actions.push(el("a", { class: "button quiet", href: "#/board/" + g.key, text: "Scoreboard" }));
     }
     if (isCoach() && g.id && !unplayable) {
-      actions.push(el("a", { class: "button quiet", href: "#/challenges/" + g.key, text: "Challenges" }));
+      // Saved Games have no score, so no challenges or results.
+      if (g.type !== "saved") actions.push(el("a", { class: "button quiet", href: "#/challenges/" + g.key, text: "Challenges" }));
       if (g.scoring) actions.push(el("a", { class: "button quiet", href: "#/results/" + g.key, text: "Results" }));
       actions.push(el("a", { class: "button quiet", href: "#/settings/" + g.key, text: "Settings" }));
     }
@@ -374,7 +384,7 @@
     return el("li", { class: "game" + (unplayable ? " unplayable" : "") }, [
       g.id ? el("img", { class: "game-icon", src: gamePath(g.key, "/icon"), alt: "" }) : el("div", { class: "game-icon" }),
       el("div", {}, [
-        el("h3", { text: g.title }),
+        el("h3", {}, [g.title, " ", kindTag(g)]),
         g.description ? el("p", { class: "desc", text: g.description }) : null,
         facts.length ? el("div", { class: "facts" }, facts) : null,
         !unplayable && freeBoard ? el("div", { class: "facts", style: "margin-top:.35rem" }, [rulesNote(s ? s.counts : g.scoring.counts, s && s.first_used)]) : null,
@@ -676,7 +686,7 @@
     ]);
   }
 
-  // ================================================================ Classroom Games
+  // ================================================================ Scored Games in channels
 
   function fieldText(f, v) {
     if (v === null || v === undefined) return "";
@@ -981,7 +991,7 @@
       gameFields.length ? el("fieldset", {}, [el("legend", { text: "Game options" })].concat(gameFields.map(function (f) { return f.node; }))) : null,
       el("div", { class: "row" }, [saveBtn, el("a", { class: "button quiet", href: "#/", text: "Back to games" })])
     ]);
-    var intro = g.type === "classroom"
+    var intro = g.origin === "channel"
       ? "These settings apply to everyone in your facility."
       : "Settings for free play, for everyone in your facility. Challenges have their own settings.";
     setView([pageHead([["Games", "#/"]], g.title + " settings", intro), form], { title: g.title });
@@ -1291,7 +1301,8 @@
         } }));
       }
       var from = { installed: "Installed", folder: "Game folder (for game makers)", channel: "Channel" }[g.origin] || g.origin;
-      if (g.type === "classroom") from += " (Classroom Game, " + plural(g.content.resources.length, "resource") + ")";
+      if (KINDS[g.type]) from += " · " + KINDS[g.type];
+      if (g.origin === "channel" && g.content && g.content.resources) from += " (" + plural(g.content.resources.length, "resource") + ")";
       rows.appendChild(el("tr", {}, [
         el("td", {}, [g.title, g.playable ? el("span", { class: "tag ok", text: "ready" }) : el("span", { class: "tag warn", text: "can't play" })]),
         el("td", { text: g.version || "" }),
@@ -1341,7 +1352,7 @@
       }
     }, [
       el("div", { class: "field" }, [
-        el("label", { for: "install-file", text: "Install or update a Free-play Game" }),
+        el("label", { for: "install-file", text: "Install or update a game" }),
         el("div", { class: "help", text: "Choose the game's .zip file (at most " + data.max_upload_mb + " MB). Installing a newer version keeps the old one, so you can go back." }),
         file
       ]),
