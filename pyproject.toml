@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kolibri-games"
 dynamic = ["version"]
-description = "A Kolibri plugin for learning games: Free-play Games, Classroom Games, class challenges, scoreboards and Wiki BLAZE."
+description = "A Kolibri plugin for learning games: Saved, Scored and Server Games, class challenges, scoreboards and Wiki BLAZE."
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
