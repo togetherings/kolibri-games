@@ -45,8 +45,11 @@ class Attempt(object):
 
     _ids = 0
 
-    def __init__(self, user_id, number, score=None, seconds=10, status="finished", voided=False, name=None, minute=0):
+    def __init__(self, user_id, number, score=None, seconds=10, status="finished", voided=False, name=None, minute=0,
+                 values=None, board=""):
         Attempt._ids += 1
+        self.values = values or {}
+        self.board = board
         self.id = Attempt._ids
         self.user_id = user_id
         self.user_name = name or user_id.title()

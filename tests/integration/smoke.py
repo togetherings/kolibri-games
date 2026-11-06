@@ -336,8 +336,12 @@ try:
     lesson1 = html5_resource("Lesson 1: Left-hand home keys")
     lesson1_copy = html5_resource("Lesson 1 again")
     plain = html5_resource("An ordinary HTML5 app", with_manifest=False)
+    # What EduGame Kit writes: every field, in the order the save helper saves them.
     kit = {"format": 1, "type": "scored", "id": "org.example.kit-hunt", "version": "1.0.0", "title": "Kit Hunt",
-           "scoring": {"label": "Guesses", "order": "asc", "tiebreak": "seconds"}}
+           "scoring": {"fields": [{"key": "score", "label": "Guesses", "order": "asc"},
+                                  {"key": "time", "label": "Time", "source": "time", "order": "asc", "total": "sum"},
+                                  {"key": "plays", "label": "Times played", "source": "plays"}],
+                       "rank_by": ["score", "time"]}}
     kit_node = html5_resource("Kit Hunt", manifest=kit)
     html5_resource("Kit Story", manifest={"format": 1, "type": "saved", "id": "org.example.kit-story",
                                           "version": "1.0.0", "title": "Kit Story"})
@@ -359,17 +363,22 @@ try:
     card = [g for g in data["games"] if g["key"] == LIT_KEY]
     check(bool(card) and card[0]["summary"]["boards"] == 1, "Scored Game card shows the learner's progress: %s" % card)
     status, scores = jget(learner, base + "api/games/%s/boards" % LIT_KEY)
-    board = scores["boards"][0] if status == 200 and scores["boards"] else {}
+    lessons = [b for b in scores.get("boards", []) if not b.get("total")] if status == 200 else []
+    total = [b for b in scores.get("boards", []) if b.get("total")] if status == 200 else []
+    board = lessons[0] if lessons else {}
     rows = [(r["rank"], r["name"], r["values"]) for r in board.get("rows", [])]
     check(rows == [(1, "Amina Test", {"acc": 99, "wpm": 9}), (2, "Ben Test", {"acc": 97, "wpm": 20})],
           "scoreboard read from Kolibri's saved data, best of both copies: %s" % rows)
     check(board.get("name") in ("Lesson 1: Left-hand home keys", "Lesson 1 again"), "board named after its resource")
+    check(bool(total) and total[0]["name"] == "All lessons" and total[0]["rows"][0]["values"]["boards"] == 1,
+          "a total scoreboard adds up every lesson")
     status, _ = jget(learner, base + "api/games/%s" % LIT_KEY)
     check(status == 409, "games in channels can't be opened on the games page (%s)" % status)
     status, s = jpost(c, base + "api/games/%s/settings" % LIT_KEY, {"platform": {"scoreboard": "initials"}})
     check(status == 200, "coach changed the Scored Game's scoreboard setting")
     status, scores = jget(other, base + "api/games/%s/boards" % LIT_KEY)
-    check([r["name"] for r in scores["boards"][0]["rows"]] == ["A.T.", "Ben Test"], "learners now see initials")
+    check([r["name"] for r in [b for b in scores["boards"] if not b.get("total")][0]["rows"]] == ["A.T.", "Ben Test"],
+          "learners now see initials")
     r = c.get(base + "api/games/%s/boards?format=csv&class=%s" % (LIT_KEY, classroom.id))
     check(r.status_code == 200 and b"Amina Test" in r.content, "coach downloads scoreboards as CSV")
     status, scores = jget(learner, base + "api/games/c-org.example.kit-hunt/boards")

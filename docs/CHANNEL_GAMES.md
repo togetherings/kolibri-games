@@ -1,18 +1,26 @@
 # Games in Kolibri channels
 
-Saved Games and Scored Games (see [GAME_FORMAT.md](GAME_FORMAT.md)) can also be put in a Kolibri
-channel as ordinary HTML5 apps (`.zip`). Learners open them from Learn, and coaches can put them
-in lessons and assign them to classes, like any other resource.
+**Saved Games and Scored Games are added to Kolibri through Kolibri Studio**, as ordinary HTML5
+apps (`.zip`) in a channel. Learners open them from Learn (also offline in the Kolibri app), and
+coaches can put them in lessons and assign them to classes, like any other resource.
 
 - **Saved Games** need nothing from Kolibri Games: Kolibri keeps each learner's progress. The
   games page doesn't list them.
 - **Scored Games** also appear on the games page, under **Scored Games in Learn**, with
-  **scoreboards** made from the scores the game saves.
+  **scoreboards** made from the scores the game saves: one for each level or lesson, and one for
+  the whole game if the game asks for it.
 - **Server Games** can't be put in a channel. If one is, the Setup page says so.
 
-The easiest way to make these is [EduGame Kit](https://github.com/togetherings/edugame-kit): its
-zips already have a `kolibri-game.json` and save scores the way Kolibri Games reads them. This
-page explains how that works, and how to make an existing HTML5 app a Scored Game.
+To add one:
+
+1. In [Kolibri Studio](https://studio.learningequality.org/), open your channel and choose
+   **Add > Upload files**, then choose the game's zip.
+2. Fill in the title, language and license, and publish the channel.
+3. On the Kolibri device, import the channel (or update it).
+
+The easiest way to make these games is [EduGame Kit](https://github.com/togetherings/edugame-kit):
+its zips already have a `kolibri-game.json` and save scores the way Kolibri Games reads them.
+This page explains how that works, and how to make an existing HTML5 app a Scored Game.
 
 ## How it works
 
@@ -36,25 +44,39 @@ Words used on this page:
 
 ## Games made with EduGame Kit
 
-A Scored Game made with the kit saves the learner's best score under the board `main`, as
-`[best score, seconds, times played]`, and its own save data under keys starting with `_`
-(these are never boards). Its manifest only needs `scoring`; Kolibri Games builds the
-scoreboard from it:
+A Scored Game made with the kit saves each board (the game, or each level) as a list of its
+scores in the order of its `scoring.fields`, and its own save data under keys starting with `_`
+(these are never boards):
+
+```json
+{ "_v": 1, "_save": { "level": 3 }, "main": [7, 41.5, 3] }
+```
+
+Its `kolibri-game.json`, which the kit writes, lists the fields and leaves out `saved_data`:
 
 ```json
 {
   "format": 1,
   "type": "scored",
-  "id": "org.example.number-hunt",
+  "id": "org.togetherings.number-hunt",
   "version": "1.0.0",
   "title": "Number Hunt",
-  "scoring": { "label": "Guesses", "order": "asc", "tiebreak": "seconds" }
+  "scoring": {
+    "fields": [
+      { "key": "guesses", "label": "Guesses", "order": "asc" },
+      { "key": "time", "label": "Time", "source": "time", "order": "asc", "total": "sum" },
+      { "key": "plays", "label": "Times played", "source": "plays" }
+    ],
+    "rank_by": ["guesses", "time"]
+  }
 }
 ```
 
-The same zip can be installed on the games page too, where it reports its score through the SDK.
+A kit game without levels saves one board, `main`, and each resource of it gets its own
+scoreboard, named after the resource. A kit game with levels saves a board for each, named in
+`scoring.boards`. See [SCORING.md](SCORING.md) for every part of `scoring`.
 
-## What the saved data must look like
+## Games that save their own way
 
 `cmi.suspend_data` must be text holding a JSON object, with one entry per board, keyed by the
 board's id (ids starting with `_` are skipped). Each entry is either an object or a list:
@@ -70,9 +92,11 @@ board's id (ids starting with `_` are skipped). Each entry is either an object o
 Keep board ids stable: changing one hides the scores saved under the old id. SCORM 1.2 allows
 4096 characters in `cmi.suspend_data`, so keep it short.
 
-## The manifest for other games
+Add `"saved_data": {"in": "scorm"}` to `scoring`, and give each field a `from`: a name for
+objects (`"acc"`), or a position for lists (`0` is the first). `only_if` skips entries that
+don't match.
 
-Example for Lessons In Typing (one lesson per resource, the board is named after the resource):
+Lessons In Typing: one lesson per resource, accuracy then speed, and only passed lessons count:
 
 ```json
 {
@@ -83,21 +107,48 @@ Example for Lessons In Typing (one lesson per resource, the board is named after
   "title": "Lessons In Typing",
   "description": "Typing lessons. Each lesson teaches a few new keys.",
   "color": "#2f6f5e",
-  "scoreboards": {
-    "saved_in": "scorm",
-    "board_label": "Lesson",
-    "name_boards_after_resource": true,
-    "only_if": { "from": "done", "equals": 1 },
+  "scoring": {
+    "saved_data": {
+      "in": "scorm",
+      "only_if": {
+        "from": "done",
+        "equals": 1
+      }
+    },
     "fields": [
-      { "key": "acc", "from": "acc", "label": "Accuracy", "unit": "%", "order": "desc" },
-      { "key": "wpm", "from": "wpm", "label": "Speed", "unit": "wpm", "order": "desc" }
+      {
+        "key": "acc",
+        "label": "Accuracy",
+        "unit": "%",
+        "order": "desc",
+        "total": "average"
+      },
+      {
+        "key": "wpm",
+        "label": "Speed",
+        "unit": "wpm",
+        "order": "desc",
+        "total": "average"
+      }
     ],
-    "rank_by": ["acc", "wpm"]
+    "rank_by": [
+      "acc",
+      "wpm"
+    ],
+    "counts": "best",
+    "boards": {
+      "label": "Lesson",
+      "after_resource": true,
+      "total": {
+        "label": "All lessons",
+        "count_label": "Lessons passed"
+      }
+    }
   }
 }
 ```
 
-Example for Studies In Geography (several maps and modes per resource, values in a list):
+Studies In Geography: several maps and modes per resource, values in a list, accuracy then time:
 
 ```json
 {
@@ -106,27 +157,74 @@ Example for Studies In Geography (several maps and modes per resource, values in
   "id": "org.togetherings.singe",
   "version": "0.24.0",
   "title": "Studies In Geography",
-  "scoreboards": {
-    "board_label": "Map",
+  "description": "Find regions, capitals and flags on maps.",
+  "color": "#2d5d8a",
+  "scoring": {
+    "saved_data": {
+      "in": "scorm"
+    },
     "fields": [
-      { "key": "acc", "from": 0, "label": "Accuracy", "unit": "%", "order": "desc" },
-      { "key": "time", "from": 1, "label": "Time", "seconds": true, "order": "asc" },
-      { "key": "plays", "from": 2, "label": "Times played", "combine": "sum" }
+      {
+        "key": "acc",
+        "from": 0,
+        "label": "Accuracy",
+        "unit": "%",
+        "order": "desc",
+        "total": "average"
+      },
+      {
+        "key": "time",
+        "from": 1,
+        "label": "Time",
+        "source": "time",
+        "seconds": true,
+        "order": "asc",
+        "total": "sum"
+      },
+      {
+        "key": "plays",
+        "from": 2,
+        "label": "Times played",
+        "source": "plays",
+        "total": "sum"
+      }
     ],
-    "rank_by": ["acc", "time"],
-    "board_names": { "us": "United States", "world_all": "World (all countries)" },
-    "board_name_rules": [
-      { "suffix": "_capitals", "name": "{name}: capitals" },
-      { "suffix": "_flags", "name": "{name}: flags" },
-      { "name": "{name}: regions" }
-    ]
+    "rank_by": [
+      "acc",
+      "time"
+    ],
+    "counts": "best",
+    "boards": {
+      "label": "Map",
+      "names": {
+        "us": "United States",
+        "world_all": "World (all countries)"
+      },
+      "name_rules": [
+        {
+          "suffix": "_capitals",
+          "name": "{name}: capitals"
+        },
+        {
+          "suffix": "_flags",
+          "name": "{name}: flags"
+        },
+        {
+          "name": "{name}: regions"
+        }
+      ],
+      "total": {
+        "label": "All maps",
+        "count_label": "Maps played"
+      }
+    }
   }
 }
 ```
 
-Both files are in [examples/channel-games](../examples/channel-games).
+Both files are in [examples/channel-games](../examples/channel-games) (with every map's name).
 
-### Fields
+### The manifest
 
 | Field | Meaning |
 |---|---|
@@ -136,39 +234,14 @@ Both files are in [examples/channel-games](../examples/channel-games).
 | `version` | Like `1.2.0`. When resources have different versions, the newest manifest is used for the title, description and scoreboard layout. Board names from every version are kept. |
 | `title`, `description`, `color`, `icon` | Shown on the games page. `icon` is a path inside the zip. |
 | `requires_platform` | Optional, like `">=0.2"`. |
-| `scoring` | Optional. Used on the games page, and to build the scoreboard when there's no `scoreboards`. |
-| `scoreboards` | How to read the saved data, below. |
+| `scoring` | The scores and how to read them: see [SCORING.md](SCORING.md). |
 
 `settings` are only used on the games page. `data` and `service` are only for Server Games.
 
-### `scoreboards`
-
-| Field | Meaning |
-|---|---|
-| `saved_in` | Where the data is. Only `"scorm"` (`cmi.suspend_data`) for now. |
-| `fields` | Up to 8 values to show for each learner. See below. |
-| `rank_by` | Field keys used to rank learners, most important first. Each needs an `order`. |
-| `only_if` | Optional. Skip entries unless the value at `from` equals `equals`, for example only passed lessons. |
-| `board_label` | What one board is called on the page, like `"Lesson"` or `"Map"`. |
-| `board_names` | Optional names for board ids. |
-| `board_name_rules` | Optional rules that build a name from part of the id. The first rule whose `prefix` and `suffix` match is used. `{name}` is the `board_names` entry for the rest of the id (or the rest of the id itself), and `{id}` is the rest of the id. |
-| `name_boards_after_resource` | If `true`, a board without a name takes the title of the resource that saved it. Use this when each resource has one board. |
-
-Each entry in `fields`:
-
-| Field | Meaning |
-|---|---|
-| `key` | A short name for the value, like `acc`. |
-| `from` | Where the value is in a board's entry: a name for objects (`"acc"`), or a position for lists (`0` is the first). Defaults to `key`. |
-| `label` | Column heading, like `"Accuracy"`. |
-| `unit` | Optional, like `"%"` or `"wpm"`. |
-| `seconds` | `true` if the value is a number of seconds; it's shown as minutes and seconds. |
-| `decimals` | Digits after the point. Default 0. |
-| `order` | `"desc"` if higher is better, `"asc"` if lower is better. Needed for fields in `rank_by`. |
-| `combine` | How results from different resources are joined: `"best"` (default, taken from the learner's best result), `"sum"` (added up, for counts like times played) or `"max"`. |
-
-Values that are missing from the saved data are shown as blank, so you can add a field to a game
-later (for example "times played") and older saves still work.
+When resources save the same board (a map used in two lessons), they share one scoreboard: each
+learner's best entry counts, and fields with `"source": "plays"` are added up. Values that are
+missing from the saved data are shown as blank, so you can add a field to a game later (for
+example "times played") and older saves still work.
 
 ## Settings and privacy
 

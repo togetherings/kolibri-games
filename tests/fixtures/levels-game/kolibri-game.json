@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "type": "scored",
+  "id": "org.togetherings.levels-test",
+  "version": "0.1.0",
+  "title": "Levels test",
+  "description": "A test game with two scores and levels, like a typing game played on the games page.",
+  "scoring": {
+    "fields": [
+      {"key": "acc", "label": "Accuracy", "unit": "%", "order": "desc", "min": 0, "max": 100, "total": "average"},
+      {"key": "wpm", "label": "Speed", "unit": "wpm", "order": "desc", "total": "average"},
+      {"key": "time", "label": "Time", "source": "time", "total": "sum"},
+      {"key": "plays", "label": "Times played", "source": "plays"}
+    ],
+    "rank_by": ["acc", "wpm"],
+    "counts": "best",
+    "boards": {"label": "Lesson", "names": {"l1": "Lesson 1", "l2": "Lesson 2"}, "total": {"label": "All lessons"}}
+  }
+}

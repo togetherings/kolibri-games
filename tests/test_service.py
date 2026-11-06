@@ -5,6 +5,8 @@ import pytest
 
 from kolibri_games import registry
 from kolibri_games.service import GameService, MemoryStore, PlatformError, Player
+from kolibri_games.sources import FolderSource
+from kolibri_games.views_common import results_csv
 from tests.helpers import ALL_GAME_DIRS, GAMES, Clock, folder_game, game_dir
 
 FAC = "f" * 32
@@ -305,3 +307,60 @@ def test_saved_games_keep_progress_but_cant_be_challenges(setup):
     with pytest.raises(PlatformError) as e:
         make_challenge(service, game, coach, clock)
     assert e.value.code == "no_scores"
+
+
+def levels_game():
+    from kolibri_games.registry import GameEntry, check
+
+    source = FolderSource(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "levels-game"))
+    manifest = source.manifest()
+    return GameEntry("g-" + manifest.id, source, "folder", manifest, check(manifest, source))
+
+
+def play_level(service, game, player, clock, board, values, seconds=30):
+    aid = service.start(game, player, board=board, resume=False)["attempt"]["id"]
+    clock.advance(seconds)
+    return service.finish(game, player, aid, {"values": values})
+
+
+def test_two_scores_levels_and_a_total_on_the_games_page(setup):
+    service, clock, amina, ben, cara, coach = setup
+    game = levels_game()
+    play_level(service, game, amina, clock, "l1", {"acc": 95, "wpm": 30})
+    done = play_level(service, game, amina, clock, "l1", {"acc": 98, "wpm": 20})
+    assert done["standing"]["values"] == {"acc": 98, "wpm": 20, "time": 30.0, "plays": 2} and done["standing"]["board"] == "l1"
+    play_level(service, game, ben, clock, "l1", {"acc": 98, "wpm": 25}, seconds=50)
+    play_level(service, game, amina, clock, "l2", {"acc": 90, "wpm": 40})
+
+    board = service.scoreboard(game, amina, board="l1")
+    assert [b["id"] for b in board["boards"]] == ["_total", "l1", "l2"] and board["boards"][1]["name"] == "Lesson 1"
+    assert [(r["rank"], r["name"], r["values"]["wpm"]) for r in board["rows"]] == [(1, "Ben Learner", 25), (2, "Amina Learner", 20)]
+    total = service.scoreboard(game, amina)  # the total comes first
+    assert total["board"] == "_total" and [f["key"] for f in total["board_spec"]["fields"]][0] == "boards"
+    assert [(r["name"], r["values"]["boards"], r["values"]["acc"]) for r in total["rows"]] == [
+        ("Amina Learner", 2, 94), ("Ben Learner", 1, 98)]
+    summary = service.summary(game, amina)
+    assert summary["counted"] is None and set(summary["boards"]) == {"l1", "l2"}
+    results = service.coach_results(game, coach, board="l2")
+    assert results["board"] == "l2" and [r["name"] for r in results["rows"]] == ["Amina Learner"]
+    assert results["rows"][0]["counted"]["values"]["wpm"] == 40
+    assert "Counted Accuracy (%)" in results_csv(results)
+
+    with pytest.raises(PlatformError) as e:  # a needed value is missing
+        play_level(service, game, amina, clock, "l1", {"acc": 98})
+    assert e.value.code == "bad_result"
+    with pytest.raises(PlatformError):  # impossible
+        play_level(service, game, amina, clock, "l1", {"acc": 101, "wpm": 3})
+    with pytest.raises(PlatformError) as e:  # a game without levels can't name one
+        service.start(folder_game("memory-match"), amina, board="l1")
+    assert e.value.code == "bad_board"
+
+
+def test_which_attempt_counts_can_be_latest_or_every_attempt_added_up(setup):
+    service, clock, amina, ben, cara, coach = setup
+    game = folder_game("memory-match")
+    for moves in (20, 12, 30):
+        play(service, game, amina, clock, moves)
+    for counts, expected in (("first", 20), ("best", 12), ("latest", 30), ("total", 62)):
+        service.save_settings(game, FAC, {"counts": counts}, {}, coach.id)
+        assert service.scoreboard(game, amina)["rows"][0]["score"] == expected, counts

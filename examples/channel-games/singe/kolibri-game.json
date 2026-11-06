@@ -6,25 +6,66 @@
   "title": "Studies In Geography",
   "description": "Find regions, capitals and flags on maps.",
   "color": "#2d5d8a",
-  "scoreboards": {
-    "saved_in": "scorm",
-    "board_label": "Map",
-    "fields": [
-      { "key": "acc", "from": 0, "label": "Accuracy", "unit": "%", "order": "desc" },
-      { "key": "time", "from": 1, "label": "Time", "seconds": true, "order": "asc" },
-      { "key": "plays", "from": 2, "label": "Times played", "combine": "sum" }
-    ],
-    "rank_by": ["acc", "time"],
-    "board_names": {
-      "sierra_leone": "Sierra Leone",
-      "us": "United States",
-      "world": "World",
-      "world_all": "World (all countries)"
+  "scoring": {
+    "saved_data": {
+      "in": "scorm"
     },
-    "board_name_rules": [
-      { "suffix": "_capitals", "name": "{name}: capitals" },
-      { "suffix": "_flags", "name": "{name}: flags" },
-      { "name": "{name}: regions" }
-    ]
+    "fields": [
+      {
+        "key": "acc",
+        "from": 0,
+        "label": "Accuracy",
+        "unit": "%",
+        "order": "desc",
+        "total": "average"
+      },
+      {
+        "key": "time",
+        "from": 1,
+        "label": "Time",
+        "source": "time",
+        "seconds": true,
+        "order": "asc",
+        "total": "sum"
+      },
+      {
+        "key": "plays",
+        "from": 2,
+        "label": "Times played",
+        "source": "plays",
+        "total": "sum"
+      }
+    ],
+    "rank_by": [
+      "acc",
+      "time"
+    ],
+    "counts": "best",
+    "boards": {
+      "label": "Map",
+      "names": {
+        "sierra_leone": "Sierra Leone",
+        "us": "United States",
+        "world": "World",
+        "world_all": "World (all countries)"
+      },
+      "name_rules": [
+        {
+          "suffix": "_capitals",
+          "name": "{name}: capitals"
+        },
+        {
+          "suffix": "_flags",
+          "name": "{name}: flags"
+        },
+        {
+          "name": "{name}: regions"
+        }
+      ],
+      "total": {
+        "label": "All maps",
+        "count_label": "Maps played"
+      }
+    }
   }
 }

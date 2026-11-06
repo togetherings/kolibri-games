@@ -19,7 +19,9 @@ import threading
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 
-from . import channel, photoguess, photos, ranking, wiki, wikirace
+import re
+
+from . import channel, photoguess, photos, ranking, scoring, wiki, wikirace
 from .manifest import clean_settings, merge_settings
 
 MAX_EVENTS = 2000
@@ -33,6 +35,8 @@ RESUME_HOURS = 12
 RECENT_DAYS = 14
 
 FREE_PLAY = None  # the challenge id of free-play attempts
+MAIN = ""  # the board of games without levels
+BOARD_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$")
 
 
 def utcnow():
@@ -456,16 +460,33 @@ class GameService(object):
 
     # ======================================================== playing
 
-    def _attempt_info(self, attempt, all_attempts, counts):
-        return {
+    def _attempt_info(self, attempt, all_attempts, counts, spec=None):
+        info = {
             "id": attempt.id,
             "number": attempt.number,
+            "board": getattr(attempt, "board", MAIN) or MAIN,
             "status": attempt.status,
             "practice": ranking.is_practice(attempt, all_attempts, counts),
             "started_at": _iso(attempt.started_at),
             "score": ranking.num(attempt.score),
             "seconds": round(attempt.seconds, 1) if attempt.seconds is not None else None,
         }
+        if spec is not None and attempt.status == "finished":
+            info["values"] = ranking.attempt_values(attempt, spec)
+        return info
+
+    @staticmethod
+    def _board(game, board):
+        """The board an attempt is on: "" for games without levels, else the level's id."""
+        board = board or MAIN
+        if board == MAIN:
+            return MAIN
+        spec = game.manifest.scoring
+        if not spec or not spec.get("boards"):
+            raise PlatformError("This game has no levels, so it can't name a board.", "bad_board")
+        if not isinstance(board, str) or not BOARD_RE.match(board):
+            raise PlatformError("Board names are letters, digits, '.', '_', ':' or '-' (at most 100).", "bad_board")
+        return board
 
     def _elapsed(self, attempt):
         """Seconds since the attempt started, without counting clock jumps when possible.
@@ -507,7 +528,8 @@ class GameService(object):
             raise PlatformError("Time's up.", "time_up", 409)
         return attempt, ctx
 
-    def start(self, game, player, challenge_id=FREE_PLAY, resume=True):
+    def start(self, game, player, challenge_id=FREE_PLAY, resume=True, board=MAIN):
+        board = self._board(game, board)
         ctx = self.context(game, player, challenge_id)
         if ctx.challenge is not None:
             state = self.challenge_state(ctx.challenge)
@@ -520,8 +542,9 @@ class GameService(object):
         is_race = game.manifest.service == "wikipedia-race"
         is_hunt = game.manifest.service == "photo-guess"
 
-        # Pick up an unfinished attempt where the player left it, and close older ones.
-        open_attempts = sorted([a for a in mine if a.status == "started" and not a.voided], key=lambda a: a.number)
+        # Pick up an unfinished attempt where the player left it (on the same board), and close older ones.
+        open_attempts = sorted([a for a in mine if a.status == "started" and not a.voided
+                                and (getattr(a, "board", MAIN) or MAIN) == board], key=lambda a: a.number)
         for a in open_attempts:
             age = self._elapsed(a)
             if resume and a is open_attempts[-1] and not self._over_time(a, ctx.time_limit) and age < RESUME_HOURS * 3600:
@@ -564,6 +587,7 @@ class GameService(object):
             user_id=player.id,
             user_name=player.name,
             challenge_id=ctx.challenge_id,
+            board=board,
             number=number,
             status="started",
             voided=False,
@@ -572,6 +596,7 @@ class GameService(object):
             state=state,
             events=[],
             detail={},
+            values={},
         )
         self._started[attempt.id] = self.monotonic()
         while len(self._started) > 10000:  # keep memory small: forget the oldest
@@ -619,7 +644,8 @@ class GameService(object):
     def finish(self, game, player, attempt_id, claimed):
         claimed = claimed if isinstance(claimed, dict) else {}
         attempt, ctx = self._open_attempt(game, player, attempt_id)
-        scoring = game.manifest.scoring
+        spec = game.manifest.scoring
+        values = {}
         if game.manifest.service == "wikipedia-race":
             # The server works out the score from the chain it kept.
             try:
@@ -633,41 +659,44 @@ class GameService(object):
             except photoguess.GuessError as e:
                 raise PlatformError(str(e), e.code)
         else:
-            # The game reports its own score; impossible ones are refused.
-            score, detail = claimed.get("score"), claimed.get("detail") or {}
+            # The game reports its own scores ({"score": n} or {"values": {...}}); impossible ones are refused.
+            score, detail = None, claimed.get("detail") or {}
             if _size(detail) > MAX_DETAIL_BYTES:
                 raise PlatformError("The result details are too large.", "bad_result")
-            if scoring is None:
-                score = None
-            elif score is not None:
-                if isinstance(score, bool) or not isinstance(score, (int, float)):
-                    raise PlatformError("The score must be a number.", "bad_result")
-                if scoring.get("min") is not None and score < scoring["min"]:
-                    raise PlatformError("That score is too low to be possible.", "bad_result")
-                if scoring.get("max") is not None and score > scoring["max"]:
-                    raise PlatformError("That score is too high to be possible.", "bad_result")
+            if spec is not None and ("score" in claimed or "values" in claimed):
+                try:
+                    values = scoring.check_values(spec, claimed)
+                except ValueError as e:
+                    raise PlatformError(str(e), "bad_result")
+                score = values.get(spec["primary"])
         attempt.score = score
+        attempt.values = values
         attempt.detail = detail
         self._close(attempt, "finished")
         return self._finish_payload(game, player, attempt, ctx)
 
     def _finish_payload(self, game, player, attempt, ctx):
         mine = self.store.attempts(game.key, player.facility_id, ctx.challenge_id, player.id)
-        payload = {"attempt": self._attempt_info(attempt, mine, ctx.counts), "counts": ctx.counts, "standing": None}
+        spec = game.manifest.scoring
+        payload = {"attempt": self._attempt_info(attempt, mine, ctx.counts, spec), "counts": ctx.counts, "standing": None}
         payload["attempt"]["detail"] = attempt.detail
-        scoring = game.manifest.scoring
-        if scoring is None or (ctx.challenge is None and not game.manifest.free_play_scoreboard):
+        if spec is None or (ctx.challenge is None and not game.manifest.free_play_scoreboard):
             return payload
-        everyone = self.store.attempts(game.key, player.facility_id, ctx.challenge_id)
-        ranked = ranking.ranked(everyone, scoring, ctx.counts)
-        for rank, a in ranked:
-            if a.user_id == player.id:
+        board = getattr(attempt, "board", MAIN) or MAIN
+        everyone = [a for a in self.store.attempts(game.key, player.facility_id, ctx.challenge_id)
+                    if (getattr(a, "board", MAIN) or MAIN) == board]
+        ranked = ranking.ranked(everyone, spec, ctx.counts)
+        for rank, res in ranked:
+            if res.user_id == player.id:
+                row = ranking.rows(spec, [(rank, res)], player.id)[0]
                 payload["standing"] = {
                     "rank": rank,
                     "of": len(ranked),
-                    "score": ranking.num(a.score),
-                    "seconds": round(a.seconds or 0, 1),
-                    "attempt": a.number,
+                    "board": board,
+                    "score": row["score"],
+                    "seconds": row["seconds"],
+                    "values": row["values"],
+                    "attempt": res.attempt.number if res.attempt is not None else None,
                 }
         return payload
 
@@ -681,33 +710,64 @@ class GameService(object):
 
     # ======================================================== results
 
-    def scoreboard(self, game, viewer, challenge_id=FREE_PLAY, user_ids=None, limit=20):
-        """Ranked rows for free play or one challenge. Routes are shown once a challenge has closed."""
-        scoring = game.manifest.scoring
+    def _board_list(self, game, attempts, spec):
+        """[{id, name}] of the boards played, the total first (games with levels)."""
+        ids = sorted({getattr(a, "board", MAIN) or MAIN for a in attempts if ranking._is_ranked(a)},
+                     key=lambda b: channel.natural_key(scoring.board_name(spec, b) or b))
+        out = [{"id": b, "name": scoring.board_name(spec, b) or b or game.manifest.title} for b in ids]
+        if out and scoring.total_spec(spec):
+            out.insert(0, {"id": scoring.TOTAL_BOARD, "name": scoring.board_name(spec, scoring.TOTAL_BOARD), "total": True})
+        return out
+
+    def _ranked_on(self, spec, attempts, counts, board):
+        """(spec, [(rank, Result)]) on one board, or on the total board."""
+        if board == scoring.TOTAL_BOARD:
+            total = scoring.total_spec(spec)
+            per_board = {}
+            for b, mine in ranking.by_board(attempts).items():
+                per_board[b] = [r for r in (ranking.counted(m, spec, counts) for m in ranking.by_user(mine).values()) if r]
+            return total, ranking.totals(per_board, total)
+        return spec, ranking.ranked([a for a in attempts if (getattr(a, "board", MAIN) or MAIN) == board], spec, counts)
+
+    def scoreboard(self, game, viewer, challenge_id=FREE_PLAY, user_ids=None, limit=20, board=None):
+        """Ranked rows for free play or one challenge, on one board. Routes are shown once a challenge has closed.
+
+        Games with levels have a board for each level they've been played on
+        (``boards``), and with scoring.boards.total, a total board too. Without
+        ``board``, the first is shown (the total, when there is one).
+        """
+        spec = game.manifest.scoring
         ctx = self.context(game, viewer, challenge_id)
-        result = {"rows": [], "visibility": ctx.visibility, "counts": ctx.counts, "challenge": None}
+        result = {"rows": [], "visibility": ctx.visibility, "counts": ctx.counts, "challenge": None,
+                  "spec": scoring.public(spec), "boards": [], "board": MAIN}
         if ctx.challenge is not None:
             result["challenge"] = self.challenge_public(game, ctx.challenge, viewer)
         elif not game.manifest.free_play_scoreboard:
             result["no_scoreboard"] = True
             return result
-        if scoring is None:
+        if spec is None:
             return result
         visibility = "names" if viewer.is_coach else ctx.visibility
         attempts = self.store.attempts(game.key, viewer.facility_id, ctx.challenge_id)
         if user_ids is not None:
             attempts = [a for a in attempts if a.user_id in user_ids]
-        closed = ctx.challenge is not None and self.challenge_state(ctx.challenge) == "closed"
-        rows = ranking.scoreboard_rows(attempts, scoring, ctx.counts, viewer.id, visibility, limit if not viewer.is_coach else 200)
-        if closed:
-            by_id = {a.id: a for a in attempts}
-            for row in rows:
-                row["route"] = (by_id[row.pop("attempt_id")].detail or {}).get("route")
+        if spec.get("boards"):
+            result["boards"] = self._board_list(game, attempts, spec)
+            ids = [b["id"] for b in result["boards"]]
+            board = board if board in ids else (ids[0] if ids else MAIN)
         else:
-            for row in rows:
-                row.pop("attempt_id", None)
-        result["rows"] = rows
-        result["visibility"] = visibility
+            board = MAIN
+        shown_spec, ranked = self._ranked_on(spec, attempts, ctx.counts, board)
+        closed = ctx.challenge is not None and self.challenge_state(ctx.challenge) == "closed"
+        rows = ranking.rows(shown_spec, ranked, viewer.id, visibility, limit if not viewer.is_coach else 200)
+        by_id = {a.id: a for a in attempts}
+        for row in rows:
+            attempt_id = row.pop("attempt_id", None)
+            if closed and attempt_id in by_id:
+                row["route"] = (by_id[attempt_id].detail or {}).get("route")
+        result.update(rows=rows, visibility=visibility, board=board)
+        if board == scoring.TOTAL_BOARD:
+            result["board_spec"] = scoring.public(shown_spec)
         return result
 
     def summary(self, game, player):
@@ -719,37 +779,58 @@ class GameService(object):
         counts = platform.get("counts", "first")
         mine = [a for a in self.store.attempts(game.key, player.facility_id, FREE_PLAY, player.id) if not a.voided]
         result = {"attempts": len(mine), "counted": None, "counts": counts}
-        if game.manifest.scoring:
-            a = ranking.counted_attempt(mine, game.manifest.scoring, counts)
-            if a is not None:
-                result["counted"] = {"score": ranking.num(a.score), "seconds": round(a.seconds or 0, 1), "number": a.number}
+        spec = game.manifest.scoring
+        if spec:
+            result.update(self._counted_info(spec, mine, counts))
             result["first_used"] = ranking.first_attempt(mine) is not None
         return result
+
+    @staticmethod
+    def _counted_info(spec, mine, counts):
+        """The learner's counted result: on the main board, or on each level ("boards")."""
+        out = {"counted": None}
+        boards = {}
+        for b, attempts in ranking.by_board(mine).items():
+            res = ranking.counted(attempts, spec, counts)
+            if res is not None:
+                row = ranking.rows(spec, [(None, res)], res.user_id)[0]
+                boards[b] = {"score": row["score"], "seconds": row["seconds"], "values": row["values"],
+                             "number": res.attempt.number if res.attempt is not None else None}
+        out["counted"] = boards.get(MAIN)
+        if spec.get("boards"):
+            out["boards"] = boards
+        return out
 
     def challenge_summary(self, game, player, challenge):
         mine = [a for a in self.store.attempts(game.key, player.facility_id, challenge.id, player.id) if not a.voided]
         info = {"attempts": len(mine), "counted": None, "first_used": ranking.first_attempt(mine) is not None}
         if game.manifest.scoring:
-            a = ranking.counted_attempt(mine, game.manifest.scoring, challenge.counts)
-            if a is not None:
-                info["counted"] = {"score": ranking.num(a.score), "seconds": round(a.seconds or 0, 1)}
+            info.update(self._counted_info(game.manifest.scoring, mine, challenge.counts))
         return info
 
     def my_attempts(self, game, player, challenge_id=FREE_PLAY):
         ctx = self.context(game, player, challenge_id)
         mine = [a for a in self.store.attempts(game.key, player.facility_id, ctx.challenge_id, player.id) if not a.voided]
-        return [self._attempt_info(a, mine, ctx.counts) for a in sorted(mine, key=lambda a: a.number)]
+        return [self._attempt_info(a, mine, ctx.counts, game.manifest.scoring) for a in sorted(mine, key=lambda a: a.number)]
 
-    def coach_results(self, game, coach, challenge_id=FREE_PLAY, users=None):
-        """Per-learner results. ``users`` is [(id, name)] to include even if they haven't played."""
+    def coach_results(self, game, coach, challenge_id=FREE_PLAY, users=None, board=None):
+        """Per-learner results on one board. ``users`` is [(id, name)] to include even if they haven't played."""
         ctx = self.context(game, coach, challenge_id)
-        counts, scoring = ctx.counts, game.manifest.scoring
+        counts, spec = ctx.counts, game.manifest.scoring
         attempts = self.store.attempts(game.key, coach.facility_id, ctx.challenge_id)
-        groups = ranking.by_user(attempts)
+        boards = []
+        if spec and spec.get("boards"):
+            boards = [b for b in self._board_list(game, attempts, spec) if b["id"] != scoring.TOTAL_BOARD]
+            ids = [b["id"] for b in boards]
+            board = board if board in ids else (ids[0] if ids else MAIN)
+        else:
+            board = MAIN
+        on_board = [a for a in attempts if (getattr(a, "board", MAIN) or MAIN) == board]
+        groups = ranking.by_user(on_board)
         rank_of = {}
-        if scoring:
-            for rank, a in ranking.ranked(attempts, scoring, counts):
-                rank_of[a.user_id] = rank
+        if spec:
+            for rank, res in ranking.ranked(on_board, spec, counts):
+                rank_of[res.user_id] = rank
         names = {a.user_id: a.user_name for a in attempts}
         if users is not None:
             wanted = [u for u, _ in users]
@@ -760,8 +841,9 @@ class GameService(object):
         for user_id in wanted:
             mine = groups.get(user_id, [])
             live = [a for a in mine if not a.voided]
-            counted = ranking.counted_attempt(live, scoring, counts) if scoring else None
-            best = ranking.counted_attempt(live, scoring, "best") if scoring else None
+            counted = ranking.counted(live, spec, counts) if spec else None
+            best = ranking.counted(live, spec, "best") if spec else None
+            every = [a for a in attempts if a.user_id == user_id and not a.voided]
             rows.append(
                 {
                     "user_id": user_id,
@@ -769,19 +851,20 @@ class GameService(object):
                     "rank": rank_of.get(user_id),
                     "attempts": len(live),
                     "reset_attempts": len(mine) - len(live),
-                    "counted": self._attempt_info(counted, live, counts) if counted else None,
-                    "best": self._attempt_info(best, live, counts) if best else None,
-                    "last_played": _iso(max([a.started_at for a in live])) if live else None,
+                    "counted": ranking.rows(spec, [(None, counted)], user_id)[0] if counted else None,
+                    "best": ranking.rows(spec, [(None, best)], user_id)[0] if best else None,
+                    "last_played": _iso(max([a.started_at for a in every])) if every else None,
                     "history": [
-                        dict(self._attempt_info(a, live, counts), detail=a.detail, events=a.events)
+                        dict(self._attempt_info(a, live, counts, spec), detail=a.detail, events=a.events)
                         for a in sorted(live, key=lambda a: a.number)
                     ],
                 }
             )
-        if scoring:
+        if spec:
             rows.sort(key=lambda r: (r["rank"] is None, r["rank"] or 0, r["name"].lower()))
         challenge = self.challenge_public(game, ctx.challenge, coach) if ctx.challenge else None
-        return {"rows": rows, "counts": counts, "scoring": scoring, "challenge": challenge}
+        return {"rows": rows, "counts": counts, "scoring": scoring.public(spec), "challenge": challenge,
+                "boards": boards, "board": board}
 
     def reset(self, game, facility_id, user_id, challenge_id=FREE_PLAY):
         self.store.attempts_void(game.key, facility_id, challenge_id, user_id)
@@ -863,7 +946,7 @@ class GameService(object):
         if class_id not in class_names or not coach.can_manage(class_id):
             errors["class_id"] = "Choose one of your classes."
         counts = data.get("counts") or (game.manifest.scoring or {}).get("counts", "first")
-        if counts not in ("first", "best"):
+        if counts not in scoring.COUNTS:
             errors["counts"] = "Choose which attempt counts."
         try:
             time_limit = int(data.get("time_limit") or 0)
@@ -1087,6 +1170,8 @@ class MemoryRecord(object):
         self.score = None
         self.seconds = None
         self.finished_at = None
+        self.board = ""
+        self.values = {}
         self.__dict__.update(fields)
 
 

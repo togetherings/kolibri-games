@@ -13,8 +13,16 @@
   Releases are published by a person in GitHub's Releases page (tag `vX.Y.Z`); the Release
   workflow then builds and attaches the files. Claude sessions can't create tags or releases.
 - Three kinds of game (manifest `type`): Saved, Scored and Server Games. Saved and Scored Games are
-  made with edugame-kit (github.com/togetherings/edugame-kit) and also work in channels; Server Games
-  use a service here. The kit's save format (board "main", "_" keys) is read in channel.py: change both together.
+  made with edugame-kit (github.com/togetherings/edugame-kit) and reach Kolibri through Kolibri Studio
+  (channels); Server Games use a service here and are installed on the games page. Docs should send
+  Saved and Scored Games through Studio, not the Setup page.
+- Scores: `scoring.py` (the one `scoring` spec: fields, rank_by, counts, boards, saved_data) and
+  `ranking.py` (ranking for attempts and channel saves). The kit writes this spec and saves boards as
+  lists in field order, "_" keys for its own save: change both repos together.
+- Never send scores to Kolibri itself (SCORM score.raw is read as completion); games set `passed`.
+- Games we keep working: LIT, SINGE (channels, their own save formats; examples/channel-games),
+  Sparkle (games page, scoring short form, counts "best" on a running total), BeaconHunt and Wiki
+  BLAZE (Server Games). BoBo Na Mi will be a Saved Game.
 - Writing style for anything users see: plain words, sentence case, active voice.
 - BeaconHunt (github.com/togetherings/beacon-hunt) uses the photo-guess service; the photo-pack
   format in docs/PHOTO_PACKS.md is shared with its pack tool, so change both together.

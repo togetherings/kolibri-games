@@ -133,44 +133,50 @@ def _csv_value(field, value):
     return value
 
 
+def _csv_heading(f):
+    if f.get("seconds"):
+        return "%s (seconds)" % f["label"]
+    return "%s (%s)" % (f["label"], f["unit"]) if f.get("unit") else f["label"]
+
+
 def scoreboards_csv(data):
+    """Every board of a game in channels, the total board first when there is one."""
     out = io.StringIO()
     writer = csv.writer(out)
     spec = data["spec"]
     fields = spec["fields"]
-    writer.writerow(
-        [spec["board_label"], "Rank", "Name"]
-        + ["%s (%s)" % (f["label"], "seconds" if f["seconds"] else f["unit"]) if (f["unit"] or f["seconds"]) else f["label"] for f in fields]
-    )
+    total = next((b for b in data["boards"] if b.get("total")), None)
+    extra = [f for f in (total["spec"]["fields"] if total else []) if f["key"] not in [x["key"] for x in fields]]
+    writer.writerow([spec["board_label"], "Rank", "Name"] + [_csv_heading(f) for f in extra + fields])
     for board in data["boards"]:
         for row in board["rows"]:
             writer.writerow(
-                [board["name"], row["rank"], row["name"]] + [_csv_value(f, row["values"].get(f["key"])) for f in fields]
+                [board["name"], row["rank"], row["name"]]
+                + [_csv_value(f, row["values"].get(f["key"])) for f in extra + fields]
             )
     return out.getvalue()
 
 
 def results_csv(data):
+    """A coach's results: each learner's counted and best result, with every field."""
     out = io.StringIO()
     writer = csv.writer(out)
-    label = (data.get("scoring") or {}).get("label", "Score")
-    writer.writerow(["Rank", "Name", "Counted %s" % label, "Counted seconds", "Best %s" % label, "Attempts", "Last played", "Route"])
+    spec = data.get("scoring") or {"fields": [], "label": "Score"}
+    fields = spec["fields"]
+    writer.writerow(
+        ["Rank", "Name"] + ["Counted " + _csv_heading(f) for f in fields] + ["Best " + _csv_heading(f) for f in fields]
+        + ["Attempts", "Last played", "Route"]
+    )
     for r in data["rows"]:
         counted, best = r["counted"] or {}, r["best"] or {}
         route = ""
         for a in r.get("history") or []:
-            if counted and a["id"] == counted.get("id"):
+            if counted and a["id"] == counted.get("attempt_id"):
                 route = " > ".join((a.get("detail") or {}).get("route") or [])
         writer.writerow(
-            [
-                r["rank"] or "",
-                r["name"],
-                counted.get("score", ""),
-                counted.get("seconds", ""),
-                best.get("score", ""),
-                r["attempts"],
-                r["last_played"] or "",
-                route,
-            ]
+            [r["rank"] or "", r["name"]]
+            + [_csv_value(f, (counted.get("values") or {}).get(f["key"])) for f in fields]
+            + [_csv_value(f, (best.get("values") or {}).get(f["key"])) for f in fields]
+            + [r["attempts"], r["last_played"] or "", route]
         )
     return out.getvalue()

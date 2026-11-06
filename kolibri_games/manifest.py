@@ -6,23 +6,23 @@ Every game is a zip file with a ``kolibri-game.json`` at its root. The
 ``type`` field says which kind of game it is:
 
 * ``"saved"``: Saved Games keep each learner's progress, and nothing more.
-* ``"scored"``: Scored Games also report a score, for scoreboards.
+* ``"scored"``: Scored Games also report scores, for scoreboards (see scoring.py).
 * ``"server"``: Server Games need this plugin's server to play (Wiki BLAZE,
   BeaconHunt): the server runs the rules, so they can't work offline or
   anywhere else. They use one of the plugin's services.
 
-Saved and Scored Games can be installed on the games page *or* put in a
-Kolibri channel and opened from Learn (they also work outside Kolibri: see
-github.com/togetherings/edugame-kit, which makes them). In a channel, the
-games page shows Scored Games' scoreboards from the data they save
-(docs/CHANNEL_GAMES.md). Server Games are only installed on the games page
-(docs/GAME_FORMAT.md).
+Saved and Scored Games are made with EduGame Kit (github.com/togetherings/edugame-kit)
+and added to Kolibri through Kolibri Studio, in a channel. The games page shows
+Scored Games' scoreboards from the data they save (docs/CHANNEL_GAMES.md).
+Server Games, which can't go through Studio, are installed on the games page
+(docs/GAME_FORMAT.md). The games page can install the other kinds too, but
+that isn't the way they're meant to reach learners.
 """
 import json
 import posixpath
 import re
 
-from . import MANIFEST_FORMAT
+from . import MANIFEST_FORMAT, scoring
 from .versions import VersionError, parse_spec, parse_version
 
 MANIFEST_PATH = "kolibri-game.json"
@@ -50,11 +50,6 @@ SETTING_TYPES = ("integer", "number", "boolean", "choice", "text", "article", "a
 WIKI_SETTING_TYPES = ("article", "article_list")
 SERVICE_SETTING_TYPES = {"article": "wikipedia-race", "article_list": "wikipedia-race", "photo_map": "photo-guess"}
 
-# For Scored Games' scoreboards in channels.
-SAVED_IN = ("scorm",)
-COMBINE = ("best", "sum", "max")
-MAX_FIELDS = 8
-
 #: Settings every game on the games page has, managed by the platform rather than the game.
 PLATFORM_SETTINGS = [
     {
@@ -64,6 +59,8 @@ PLATFORM_SETTINGS = [
         "choices": [
             {"value": "first", "label": "First attempt only (later attempts are practice)"},
             {"value": "best", "label": "Best attempt"},
+            {"value": "latest", "label": "Latest attempt"},
+            {"value": "total", "label": "Every attempt added up"},
         ],
         "default": None,  # filled in from the manifest's scoring.counts
     },
@@ -128,14 +125,13 @@ class Manifest(object):
         self.authors = data.get("authors", [])
         self.license = data.get("license", "")
         self.languages = data.get("languages") or [self.language]
+        # Checked and in full form (scoring.check): fields, rank_by, counts, boards, saved_data.
         self.scoring = data.get("scoring")
         self.settings = data.get("settings", [])
         self.data = data.get("data", [])
         self.service = data.get("service")
         self.wikipedia = data.get("wikipedia") or {}
         self.photos = data.get("photos") or {}
-        # How to read scores from saved data in channels (Scored Games); see channel_spec.
-        self.scoreboards = data.get("scoreboards")
 
     @property
     def is_server(self):
@@ -150,14 +146,13 @@ class Manifest(object):
     def channel_spec(self):
         """How to read this game's scores from its saved data in a channel, or None (Saved Games).
 
-        Games made with edugame-kit don't need a ``scoreboards`` section: their
-        save helper saves scores in a standard way (see DEFAULT_BOARD), and this
-        builds the scoreboard from ``scoring``. Other games say how to read
-        their own saved data in ``scoreboards`` (docs/CHANNEL_GAMES.md).
+        It's the scoring spec: games made with EduGame Kit save scores the kit's
+        way, and other games say how they save theirs in scoring.saved_data
+        (see scoring.py and docs/CHANNEL_GAMES.md).
         """
         if self.type != "scored":
             return None
-        return self.scoreboards or default_scoreboards(self.scoring)
+        return self.scoring
 
     @property
     def has_scores(self):
@@ -190,12 +185,11 @@ class Manifest(object):
             "description": self.description,
             "language": self.language,
             "languages": self.languages,
-            "scoring": self.scoring,
+            "scoring": scoring.public(self.scoring),
             "color": self.color,
             "authors": self.authors,
             "license": self.license,
             "service": self.service,
-            "scoreboards": self.scoreboards,
         }
 
 
@@ -231,158 +225,6 @@ def _check_setting(field, i, problems, service):
             clean_value(field, field["default"])
         except ValueError as e:
             problems.append("%s.default: %s" % (where, e))
-
-
-def _check_scoring(scoring, problems):
-    if not isinstance(scoring, dict):
-        problems.append("scoring must be an object.")
-        return None
-    if scoring.get("order") not in ("asc", "desc"):
-        problems.append("scoring.order must be 'asc' (lower is better) or 'desc' (higher is better).")
-    if scoring.get("counts", "first") not in ("first", "best"):
-        problems.append("scoring.counts must be 'first' or 'best'.")
-    if scoring.get("tiebreak", "seconds") not in ("seconds", "none"):
-        problems.append("scoring.tiebreak must be 'seconds' or 'none'.")
-    for bound in ("min", "max"):
-        if bound in scoring and not isinstance(scoring[bound], (int, float)):
-            problems.append("scoring.%s must be a number." % bound)
-    if not isinstance(scoring.get("decimals", 0), int):
-        problems.append("scoring.decimals must be a whole number.")
-    if not isinstance(scoring.get("free_play_scoreboard", True), bool):
-        problems.append("scoring.free_play_scoreboard must be true or false.")
-    return {
-        "label": scoring.get("label", "Score"),
-        "unit": scoring.get("unit", ""),
-        "order": scoring.get("order"),
-        "counts": scoring.get("counts", "first"),
-        "tiebreak": scoring.get("tiebreak", "seconds"),
-        "decimals": scoring.get("decimals", 0),
-        "min": scoring.get("min"),
-        "max": scoring.get("max"),
-        "free_play_scoreboard": scoring.get("free_play_scoreboard", True),
-    }
-
-
-def _check_scoreboards(sb, problems):
-    """Checks the "scoreboards" section of a Scored Game and returns it with defaults filled in."""
-    if not isinstance(sb, dict):
-        problems.append("scoreboards must be an object that says how to read the game's saved data.")
-        return None
-    where = "scoreboards"
-    saved_in = sb.get("saved_in", "scorm")
-    if saved_in not in SAVED_IN:
-        problems.append("%s.saved_in must be one of %s." % (where, ", ".join(SAVED_IN)))
-    fields = sb.get("fields")
-    keys = {}
-    if not isinstance(fields, list) or not 0 < len(fields) <= MAX_FIELDS:
-        problems.append("%s.fields must list 1 to %d values to show." % (where, MAX_FIELDS))
-        fields = []
-    clean_fields = []
-    for i, f in enumerate(fields):
-        fw = "%s.fields[%d]" % (where, i)
-        if not isinstance(f, dict):
-            problems.append("%s must be an object." % fw)
-            continue
-        key = f.get("key")
-        if not isinstance(key, str) or not KEY_RE.match(key):
-            problems.append("%s.key must be lower_case letters, digits or _." % fw)
-        elif key in keys:
-            problems.append("%s.key '%s' is used twice." % (fw, key))
-        src = f.get("from", key)
-        if isinstance(src, bool) or not (
-            (isinstance(src, int) and 0 <= src < 100) or (isinstance(src, str) and 0 < len(src) <= 40)
-        ):
-            problems.append("%s.from must be a name (like \"acc\") or a position in a list (like 0)." % fw)
-        if not isinstance(f.get("label"), str) or not f["label"].strip():
-            problems.append("%s.label is required." % fw)
-        if f.get("order") not in (None, "asc", "desc"):
-            problems.append("%s.order must be 'asc' (lower is better) or 'desc' (higher is better)." % fw)
-        if f.get("combine", "best") not in COMBINE:
-            problems.append("%s.combine must be one of %s." % (fw, ", ".join(COMBINE)))
-        if not isinstance(f.get("decimals", 0), int) or isinstance(f.get("decimals", 0), bool):
-            problems.append("%s.decimals must be a whole number." % fw)
-        if "unit" in f and not isinstance(f["unit"], str):
-            problems.append("%s.unit must be text." % fw)
-        clean = {
-            "key": key,
-            "from": src,
-            "label": f.get("label"),
-            "unit": f.get("unit", ""),
-            "order": f.get("order"),
-            "combine": f.get("combine", "best"),
-            "decimals": f.get("decimals", 0),
-            "seconds": bool(f.get("seconds", False)),
-        }
-        keys[key] = clean
-        clean_fields.append(clean)
-    rank_by = sb.get("rank_by")
-    if not isinstance(rank_by, list) or not rank_by:
-        problems.append("%s.rank_by must list the values used to rank players, best first." % where)
-        rank_by = []
-    for k in rank_by:
-        if k not in keys:
-            problems.append("%s.rank_by: '%s' isn't one of the fields." % (where, k))
-        elif not keys[k]["order"]:
-            problems.append("%s.rank_by: give the field '%s' an order." % (where, k))
-        elif keys[k]["combine"] != "best":
-            problems.append("%s.rank_by: '%s' can't be used for ranking because it's combined with %s." % (where, k, keys[k]["combine"]))
-    only_if = sb.get("only_if")
-    if only_if is not None and not (isinstance(only_if, dict) and "from" in only_if and "equals" in only_if):
-        problems.append("%s.only_if needs 'from' and 'equals'." % where)
-    names = sb.get("board_names", {})
-    if not isinstance(names, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in names.items()):
-        problems.append("%s.board_names must map board ids to names." % where)
-        names = {}
-    rules = sb.get("board_name_rules", [])
-    if not isinstance(rules, list):
-        problems.append("%s.board_name_rules must be a list." % where)
-        rules = []
-    for i, r in enumerate(rules):
-        if not (
-            isinstance(r, dict)
-            and isinstance(r.get("name"), str)
-            and isinstance(r.get("prefix", ""), str)
-            and isinstance(r.get("suffix", ""), str)
-        ):
-            problems.append("%s.board_name_rules[%d] needs a name, and an optional prefix and suffix." % (where, i))
-    label = sb.get("board_label", "Scoreboard")
-    if not isinstance(label, str) or not label.strip():
-        problems.append("%s.board_label must be text." % where)
-    return {
-        "saved_in": saved_in,
-        "fields": clean_fields,
-        "rank_by": list(rank_by),
-        "only_if": only_if,
-        "board_label": label,
-        "board_names": names,
-        "board_name_rules": rules,
-        "name_boards_after_resource": bool(sb.get("name_boards_after_resource", False)),
-    }
-
-
-#: Where games made with edugame-kit keep their score in their saved data: this
-#: board id, as [best score, seconds of that play, times played]. One board per
-#: resource. Keys starting with "_" hold the save itself and are never boards.
-DEFAULT_BOARD = "main"
-
-
-def default_scoreboards(scoring):
-    """The scoreboards spec for a Scored Game made with edugame-kit (see DEFAULT_BOARD)."""
-    scoring = scoring or {}
-    fields = [{"key": "score", "from": 0, "label": scoring.get("label") or "Score",
-               "unit": scoring.get("unit", ""), "order": scoring.get("order", "desc"),
-               "decimals": scoring.get("decimals", 0)}]
-    rank_by = ["score"]
-    if scoring.get("tiebreak") == "seconds":
-        fields.append({"key": "time", "from": 1, "label": "Time", "seconds": True, "order": "asc"})
-        rank_by.append("time")
-    fields.append({"key": "plays", "from": 2, "label": "Times played", "combine": "sum"})
-    spec = {"saved_in": "scorm", "board_label": "Game", "name_boards_after_resource": True,
-            "fields": fields, "rank_by": rank_by}
-    problems = []
-    clean = _check_scoreboards(spec, problems)
-    assert not problems, problems
-    return clean
 
 
 def validate(data):
@@ -432,26 +274,22 @@ def validate(data):
     if gtype == "server":
         if service not in SERVICES:
             problems.append("Server Games need a service: one of %s." % ", ".join(SERVICES))
-        if "scoreboards" in data:
-            problems.append("scoreboards is only for Scored Games (it's how channels read their scores).")
+        if isinstance(data.get("scoring"), dict) and "saved_data" in data["scoring"]:
+            problems.append("scoring.saved_data is only for Scored Games in channels.")
     elif service is not None:
         problems.append("Only Server Games (type 'server') use a service.")
-    if gtype == "saved":
-        for name in ("scoring", "scoreboards"):
-            if name in data:
-                problems.append("Saved Games don't keep scores, so they can't have '%s'. Use type 'scored'." % name)
-    if gtype == "scored":
-        if not data.get("scoring") and data.get("scoreboards") is None:
-            problems.append("Scored Games need a scoring section (what the score is called, and whether more is "
-                            "better), or a scoreboards section that says how to read scores from their saved data.")
-        if data.get("scoreboards") is not None:
-            clean["scoreboards"] = _check_scoreboards(data["scoreboards"], problems)
+    if "scoreboards" in data:
+        problems.append("scoreboards is now part of scoring (see docs/GAME_FORMAT.md).")
+    if gtype == "saved" and "scoring" in data:
+        problems.append("Saved Games don't keep scores, so they can't have 'scoring'. Use type 'scored'.")
+    if gtype == "scored" and not data.get("scoring"):
+        problems.append("Scored Games need a scoring section: what the scores are called, and whether more is better.")
     if gtype != "server":
         for name in ("data", "wikipedia", "photos"):
             if name in data:
                 problems.append("'%s' is only for Server Games." % name)
     if data.get("scoring") is not None:
-        clean["scoring"] = _check_scoring(data["scoring"], problems)
+        clean["scoring"] = scoring.check(data["scoring"], problems)
     settings = data.get("settings", [])
     if not isinstance(settings, list):
         problems.append("settings must be a list.")

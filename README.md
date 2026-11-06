@@ -5,32 +5,42 @@ offline learning games, built with [Internet-in-a-Box](https://internet-in-a-box
 
 - **Games are content, not code in the plugin.** Every game is a zip of web files, so adding a
   game never means changing the plugin.
-- **Three kinds of game.** *Saved Games* keep each learner's progress. *Scored Games* also keep a
-  score, for scoreboards and challenges. *Server Games*, like Wiki BLAZE, need this plugin's server
-  to run their rules. Any of them can be installed on the games page. Saved and Scored Games can
-  also be ordinary HTML5 apps in Kolibri channels, which learners open from Learn and coaches
-  assign in lessons; the games page shows scoreboards from the scores they save.
+- **Three kinds of game.**
+  - *Saved Games* keep each learner's progress.
+  - *Scored Games* also keep scores: one score, or several (like accuracy and speed), with a
+    scoreboard for each level or lesson and one for the whole game.
+  - *Server Games*, like Wiki BLAZE and BeaconHunt, need this plugin's server to run their rules.
+- **Saved and Scored Games are added through Kolibri Studio**, as ordinary HTML5 apps in a
+  channel. Learners open them from Learn (also offline in the Kolibri app), coaches assign them
+  in lessons, and the games page shows Scored Games' scoreboards from the scores they save. Make
+  them with [EduGame Kit](https://github.com/togetherings/edugame-kit).
+- **Server Games are installed on the games page**, because they can't go through Studio.
 - **Challenges.** Coaches set a game up for a class, with its own settings, dates and scoreboard.
 - **Learners sign in with Kolibri.** Results are saved to their account.
 - **Coaches stay in control.** They can see every learner's attempts and moves, export results
-  as CSV, choose whether the first or best attempt counts, hide or anonymise scoreboards, set
-  time limits, change each game's options, and give a learner a fresh start.
+  as CSV, choose which attempt counts (first, best, latest, or all of them added up), hide or
+  anonymise scoreboards, set time limits, change each game's options, and give a learner a
+  fresh start.
 - **Light enough for a Raspberry Pi**, and works fully offline.
 
-Games attached to each release:
+## Games
 
-- **Wiki BLAZE** (Browsing Links A-to-Z Exploration): race from one Wikipedia article to another
-  by following links, using the Wikipedia file already on the device. See
-  [docs/WIKI_BLAZE.md](docs/WIKI_BLAZE.md).
-More games:
+| Game | Kind | What it is | Where to get it |
+|---|---|---|---|
+| **Wiki BLAZE** (Browsing Links A-to-Z Exploration) | Server Game | Race from one Wikipedia article to another by following links, using the Wikipedia file already on the device. See [docs/WIKI_BLAZE.md](docs/WIKI_BLAZE.md). | Attached to each [release](https://github.com/togetherings/kolibri-games/releases) here |
+| **[BeaconHunt](https://github.com/togetherings/beacon-hunt)** | Server Game | Guess where in the world a street photo was taken. | Its releases |
+| **[Lessons In Typing](https://github.com/togetherings/lit)** (LIT) | Scored Game | Touch-typing lessons in several languages and keyboard layouts, scored by accuracy and speed. | Its releases, through Kolibri Studio |
+| **[Studies In Geography](https://github.com/togetherings/singe)** (SINGE) | Scored Game | Find regions, capitals and flags on maps. | Its releases, through Kolibri Studio |
+| **[Sparkle](https://github.com/togetherings/sparkle)** | Scored Game | Guess the hidden word from letter clues: a new word every day, plus practice words. | Its releases |
+| **[BoBo Na Mi](https://github.com/togetherings/bobo-na-mi)** | Saved Game | Push words to change the rules and solve puzzles. | Coming soon |
+| **[Number Hunt and Memory Match](https://github.com/togetherings/edugame-kit/tree/main/examples)** | Scored Games | Small example games. | EduGame Kit |
 
-- **[BeaconHunt](https://github.com/togetherings/beacon-hunt)**: guess where a street photo was
-  taken (a Server Game).
-- Saved and Scored Games made with **[EduGame Kit](https://github.com/togetherings/edugame-kit)**,
-  which also work in Moodle, RACHEL, Sugarizer and Kiwix.
+**[EduGame Kit](https://github.com/togetherings/edugame-kit)** is how Saved and Scored Games are
+made: one zip that works in Kolibri channels, the Kolibri Games scoreboards, Moodle and other
+learning systems, RACHEL, Sugarizer and Kiwix.
 
-Example manifests for Scored Games in channels (Lessons In Typing and Studies In Geography) are
-in [examples/channel-games](examples/channel-games).
+Example manifests for Lessons In Typing and Studies In Geography, which keep their scores their
+own way, are in [examples/channel-games](examples/channel-games).
 
 ## Install
 
@@ -63,16 +73,18 @@ account, and come straight back to the games page afterwards.
 
 ### Adding games
 
-- **On the games page:** open **Setup**, choose the game's `.zip` file and click
+- **Saved and Scored Games: through Kolibri Studio.** Upload the game's zip to a channel in
+  [Kolibri Studio](https://studio.learningequality.org/) (**Add > Upload files**), publish the
+  channel, and import it on the device. Learners find the games in Learn, and Scored Games appear
+  on the games page with their scoreboards. See [docs/CHANNEL_GAMES.md](docs/CHANNEL_GAMES.md).
+- **Server Games: on the games page.** Open **Setup**, choose the game's `.zip` file and click
   **Install**. Installing a newer version keeps the old one, so you can go back. (Copying the
   zip into `<KOLIBRI_HOME>/kolibri_games/games/` works too; on IIAB that's
   `/library/kolibri/kolibri_games/games/`.) Only device administrators can install games.
-- **In a channel:** import a Kolibri channel that contains Saved or Scored Games. Learners find
-  them in Learn, and Scored Games appear on the games page automatically.
-- **Wiki BLAZE** also needs a Wikipedia `.zim` file: choose it on the Setup page.
+- **Wiki BLAZE** also needs a Wikipedia `.zim` file, and **BeaconHunt** a photo pack: choose them
+  on the Setup page.
 
-The games are attached to each [release](https://github.com/togetherings/kolibri-games/releases)
-as `.zip` files. Administrators can see why a game can't be played on the Setup page, or with:
+Administrators can see why a game can't be played on the Setup page, or with:
 
 ```bash
 sudo -u kolibri KOLIBRI_HOME=/library/kolibri kolibri manage kolibri_games_check
@@ -80,13 +92,13 @@ sudo -u kolibri KOLIBRI_HOME=/library/kolibri kolibri manage kolibri_games_check
 
 ## Making games
 
-A game is a zip with a `kolibri-game.json` manifest and ordinary web files (HTML, JavaScript,
-CSS, images). On the games page it uses a small JavaScript SDK to save progress, start attempts,
-report moves and finish with a score. See **[docs/GAME_FORMAT.md](docs/GAME_FORMAT.md)**.
-
-To make a Saved or Scored Game, start with [EduGame Kit](https://github.com/togetherings/edugame-kit).
-To show scoreboards for an existing HTML5 app that saves scores in SCORM `cmi.suspend_data`, add a
-`kolibri-game.json` that says how to read them. See **[docs/CHANNEL_GAMES.md](docs/CHANNEL_GAMES.md)**.
+- **Saved and Scored Games:** start with [EduGame Kit](https://github.com/togetherings/edugame-kit).
+  To show scoreboards for an existing HTML5 app that saves scores its own way in SCORM
+  `cmi.suspend_data`, add a `kolibri-game.json` that says how to read them: see
+  **[docs/CHANNEL_GAMES.md](docs/CHANNEL_GAMES.md)**.
+- **Server Games:** a zip with a `kolibri-game.json` manifest and ordinary web files, using the
+  plugin's JavaScript SDK and one of its services. See **[docs/GAME_FORMAT.md](docs/GAME_FORMAT.md)**,
+  and **[docs/SCORING.md](docs/SCORING.md)** for how scores are described and ranked.
 
 ```bash
 pip install -e ".[wikipedia]"    # in this repository
@@ -127,8 +139,8 @@ Kolibri, and the installer on an IIAB-like system for every pull request.
 2. On GitHub, go to **Releases > Draft a new release**, type the tag (for example `v0.2.0`),
    choose **Create new tag on publish** with target `main`, give it a title and click
    **Publish release**.
-3. GitHub Actions then runs the tests and attaches the plugin, the offline bundle, the game zips
-   and checksums to the release (a few minutes). If the release notes are empty, they're filled in
+3. GitHub Actions then runs the tests and attaches the plugin, the offline bundle, the Wiki BLAZE
+   zip and checksums to the release (a few minutes). If the release notes are empty, they're filled in
    from the changelog.
 
 ## License

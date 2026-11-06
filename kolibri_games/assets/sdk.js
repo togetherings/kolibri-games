@@ -8,15 +8,22 @@
  * Every call returns a Promise. See docs/GAME_FORMAT.md for details.
  *
  *   KolibriGames.ready()                -> {game, player, settings, rules, challenge, summary, preview}
- *   KolibriGames.start({resume: true})  -> {attempt, public, resumed, time_limit, elapsed}
+ *   KolibriGames.start({resume: true, board: "level-2"})
+ *                                       -> {attempt, public, resumed, time_limit, elapsed}
  *   KolibriGames.move(type, data)       -> {} (or, for Wiki BLAZE, the next page)
- *   KolibriGames.finish({score, detail})-> {attempt, standing, counts}
+ *   KolibriGames.finish({score, detail}) or finish({values: {acc: 97, wpm: 41}, detail})
+ *                                       -> {attempt, standing, counts}
  *   KolibriGames.abandon()
- *   KolibriGames.scoreboard()           -> {rows, visibility, counts}
+ *   KolibriGames.scoreboard({board})    -> {rows, boards, board, spec, visibility, counts}
  *   KolibriGames.myResults()            -> {attempts}
  *   KolibriGames.getState() / setState(data)   saved data for this player (max 64 KB)
  *   KolibriGames.exit()                 go back to the games list
  *   KolibriGames.on("timeup", fn)       events from the platform
+ *
+ * A game with one score finishes with {score}; a game with several (see the
+ * fields of its scoring section) finishes with {values}. Games with levels
+ * name the level (its "board") when they start an attempt; each level has its
+ * own scoreboard. The time is measured by the server.
  *
  * Every move a game reports is kept, so coaches can see how a game went.
  * Opened outside Kolibri Games (e.g. straight from a folder), the SDK runs in
@@ -145,7 +152,8 @@
           var results = load(m.id + ":results", []);
           results.push({ score: p.score, seconds: seconds });
           save(m.id + ":results", results);
-          var a = { id: attempt.id, number: attempt.number, status: "finished", practice: false, score: p.score, seconds: Math.round(seconds * 10) / 10 };
+          var a = { id: attempt.id, number: attempt.number, status: "finished", practice: false, score: p.values ? null : p.score,
+                    values: p.values || null, seconds: Math.round(seconds * 10) / 10 };
           attempt = null;
           return { attempt: a, standing: null, counts: "best" };
         });
@@ -178,14 +186,20 @@
     apiVersion: API,
     preview: !embedded,
     ready: function () { return request("hello"); },
-    start: function (opts) { return request("attempt.start", { resume: !opts || opts.resume !== false }); },
+    start: function (opts) {
+      opts = opts || {};
+      return request("attempt.start", { resume: opts.resume !== false, board: opts.board || "" });
+    },
     move: function (type, data) { return request("attempt.move", { type: type, data: data === undefined ? null : data }); },
     finish: function (result) {
       result = result || {};
-      return request("attempt.finish", { score: result.score === undefined ? null : result.score, detail: result.detail || {} });
+      var body = { detail: result.detail || {} };
+      if (result.values) body.values = result.values;
+      else body.score = result.score === undefined ? null : result.score;
+      return request("attempt.finish", body);
     },
     abandon: function () { return request("attempt.abandon"); },
-    scoreboard: function () { return request("scoreboard.get"); },
+    scoreboard: function (opts) { return request("scoreboard.get", { board: (opts && opts.board) || "" }); },
     myResults: function () { return request("results.mine"); },
     getState: function () { return request("state.get"); },
     setState: function (data) { return request("state.set", { data: data }); },
