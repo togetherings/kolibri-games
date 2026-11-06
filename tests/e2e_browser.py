@@ -309,6 +309,13 @@ def main():
             page.locator(".panel.board h2:has-text('Sierra Leone: regions')").wait_for()
             first = page.locator(".panel.board tbody tr").nth(0).inner_text()
             assert "Amina Learner (you)" in first and "100%" in first and "5:00" in first and "6" in first, first
+            # The total board adds up every map.
+            page.locator(".board-link", has_text="All maps").click()
+            page.locator(".panel.board h2:has-text('All maps')").wait_for()
+            heads = page.locator(".panel.board thead").inner_text()
+            assert "Maps played" in heads and "Accuracy" in heads, heads
+            if shots:
+                page.screenshot(path=os.path.join(shots, "9-channel-scoreboards.png"), full_page=True)
 
             # Phone width and dark mode
             phone = browser.new_page(viewport={"width": 390, "height": 800}, is_mobile=True, color_scheme="dark")

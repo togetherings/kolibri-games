@@ -2,24 +2,25 @@
 
 Kolibri Games has three kinds of game. The `type` field in the manifest says which:
 
-| Kind | `type` | What it keeps | Where it can be played |
+| Kind | `type` | What it keeps | How it reaches learners |
 |---|---|---|---|
-| **Saved Games** | `"saved"` | Each learner's progress, like unlocked levels | On the games page, in a Kolibri channel, and anywhere else |
-| **Scored Games** | `"scored"` | Progress and a score, for scoreboards and challenges | On the games page, in a Kolibri channel, and anywhere else |
-| **Server Games** | `"server"` | Progress and a score worked out by the server | Only on the games page, because the server runs the rules |
+| **Saved Games** | `"saved"` | Each learner's progress, like unlocked levels | Through Kolibri Studio, in a channel |
+| **Scored Games** | `"scored"` | Progress and scores, for scoreboards | Through Kolibri Studio, in a channel |
+| **Server Games** | `"server"` | Progress and scores worked out by the server | Installed on the games page |
 
-Saved and Scored Games are the easiest to make with
-[EduGame Kit](https://github.com/togetherings/edugame-kit). It builds one zip that works on the
-games page, in Kolibri channels, in Moodle and other learning systems (SCORM), RACHEL, Sugarizer
-and Kiwix. The kit adds the right `kolibri-game.json` for you.
+**Saved and Scored Games are made with [EduGame Kit](https://github.com/togetherings/edugame-kit)**
+and added to Kolibri through Kolibri Studio. The kit builds one zip that works in Kolibri channels,
+on the Kolibri Games scoreboards, in Moodle and other learning systems, RACHEL, Sugarizer and
+Kiwix, and adds the right `kolibri-game.json` for you. See [CHANNEL_GAMES.md](CHANNEL_GAMES.md).
 
-Server Games use a feature built into this plugin: Wiki BLAZE uses `wikipedia-race`
-([WIKI_BLAZE.md](WIKI_BLAZE.md)) and BeaconHunt uses `photo-guess` ([PHOTO_PACKS.md](PHOTO_PACKS.md)).
-They can't be put in a channel, because the server keeps things the learner mustn't see, like
-the answers.
+**This page is about Server Games:** games that need the plugin's server, so they can't go through
+Studio. Wiki BLAZE uses the `wikipedia-race` service ([WIKI_BLAZE.md](WIKI_BLAZE.md)) and
+BeaconHunt uses `photo-guess` ([PHOTO_PACKS.md](PHOTO_PACKS.md)). The server keeps what the learner
+mustn't see, like the answers, and works out the score. A device administrator installs them on
+the games page. (The games page can install the other kinds too, which is handy for trying a game,
+but Studio is how they're meant to reach learners.)
 
-This page is about games installed on the games page. For Saved and Scored Games in Kolibri
-channels, see [CHANNEL_GAMES.md](CHANNEL_GAMES.md).
+How scores are described and ranked, for every kind, is in [SCORING.md](SCORING.md).
 
 A game is a zip of ordinary web files plus a manifest:
 
@@ -94,7 +95,7 @@ page's **Setup** page.
 | `languages` | no | Every language the game can be played in, like `["en", "fr", "sw"]`. Default: just `language`. |
 | `requires_platform` | no | Plugin versions the game works with, e.g. `>=0.2` or `>=0.2,<1`. Devices with an older plugin show "ask your administrator to update" instead of a broken game. |
 | `icon`, `color` | no | Icon file and accent colour for the games page. Without an icon, a coloured tile with the first letter is used. |
-| `scoring` | Scored and Server Games | What the score is called and how it's ranked. Saved Games have none. `order` is `asc` when lower is better, `desc` when higher is better. `counts` is the default for which attempt counts: `first` (later attempts are practice) or `best`; coaches can change it. `tiebreak` is `seconds` (faster wins ties) or `none`. `min`/`max` refuse impossible scores. `free_play_scoreboard: false` hides the free-play scoreboard, for games whose free-play rounds can't be compared (scores are then only ranked in challenges). |
+| `scoring` | Scored and Server Games | What the scores are called and how they're ranked: one score (`label`, `order`, `tiebreak`, `min`, `max`), or several `fields` with `rank_by`, and levels with their own scoreboards (`boards`). `counts` is the default for which attempt counts: `first` (later attempts are practice), `best`, `latest` or `total` (every attempt added up); coaches can change it. `free_play_scoreboard: false` hides the free-play scoreboard, for games whose free-play rounds can't be compared (scores are then only ranked in challenges). See [SCORING.md](SCORING.md). Saved Games have none. |
 | `settings` | no | Options coaches can change on the games page, for free play and for each challenge (games in channels don't have them). Types: `integer`, `number` (with optional `min`, `max`), `boolean`, `choice` (with `choices`), `text`. Each needs `key`, `label` and `default`, and can have a `help` line. |
 | `data` | Server Games | Large data the game needs from the device, by name: `wikipedia` (a Wikipedia .zim file) or `photo-packs` (a folder of photo packs), chosen by an administrator on the Setup page. |
 | `service` | Server Games | A server feature built into Kolibri Games: `"wikipedia-race"` (see [WIKI_BLAZE.md](WIKI_BLAZE.md)) or `"photo-guess"` (see [PHOTO_PACKS.md](PHOTO_PACKS.md)). |
@@ -145,21 +146,23 @@ const KG = window.KolibriGames;
 const info = await KG.ready();
 // info.player     {name, role: "learner" | "coach" | "admin"}
 // info.settings   the settings for this play (free play, or the challenge's), defaults filled in
-// info.rules      {counts: "first"|"best", scoreboard, time_limit: seconds or null}
+// info.rules      {counts: "first"|"best"|"latest"|"total", scoreboard, time_limit: seconds or null}
 // info.challenge  {title, class_name, opens_at, closes_at, ...} or null in free play
 // info.summary    {attempts, counted, first_used}
 // info.preview    true when opened outside Kolibri Games
 
-const start = await KG.start({ resume: true });
-// start.attempt  {id, number, practice}
+const start = await KG.start({ resume: true });           // games with levels: { board: "level-3" }
+// start.attempt  {id, number, board, practice}
 // start.resumed  true if this continues an attempt the player left (after a reload)
 
 await KG.move("guess", { value: 42 });                   // report a move (coaches see every move)
 const done = await KG.finish({ score: 12, detail: {} }); // end the attempt with your score
-// done.attempt   {score, seconds, practice}
-// done.standing  {rank, of, score} or null
+// or, with several scores:  KG.finish({ values: { acc: 97, wpm: 41 }, detail: {} })
+// done.attempt   {score, seconds, values, practice}
+// done.standing  {rank, of, score, seconds, values, board} or null
 
-await KG.scoreboard();           // {rows: [{rank, name, score, seconds, me}], counts, visibility}
+await KG.scoreboard();           // {rows: [{rank, name, score, seconds, values, me}], boards, board, spec, counts, visibility}
+await KG.scoreboard({ board: "level-3" });  // one level's scoreboard (or "_total")
 await KG.myResults();            // {attempts: [...]}
 await KG.getState();             // saved data for this player, or null
 await KG.setState({ level: 3 }); // up to 64 KB of JSON
@@ -169,7 +172,8 @@ KG.exit();                       // back to the games list
 
 Notes:
 
-- Time is measured by the server from `start` to `finish`; you don't report it.
+- Time is measured by the server from `start` to `finish`; you don't report it. A field with
+  `"source": "time"` shows it (see [SCORING.md](SCORING.md)).
 - Call `start({resume: false})` if your game can't restore a half-finished attempt (the old one is
   recorded as left unfinished). Number Hunt does this, because its secret number lives only in
   the page.

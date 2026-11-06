@@ -5,8 +5,8 @@
  * Pages (the part of the address after #):
  *   #/                                  the games list
  *   #/play/<game>[/c/<challenge>]       play in free play, or in a challenge
- *   #/board/<game>[/c/<challenge>]      a scoreboard
- *   #/results/<game>[/c/<challenge>]    coaches: every learner's attempts
+ *   #/board/<game>[/c/<challenge>][/b/<board>]    a scoreboard (games with levels: one board per level)
+ *   #/results/<game>[/c/<challenge>][/b/<board>]  coaches: every learner's attempts
  *   #/challenges/<game>[/new|/edit/<id>]  coaches: set up challenges
  *   #/settings/<game>                   coaches: free-play settings
  *   #/scores/<game>[/<board>[/<class>]] scoreboards of Scored Games in channels
@@ -112,6 +112,31 @@
     if (unit && Number(score) === 1) unit = unit.replace(/s$/, "");
     return unit ? n + " " + unit : n;
   }
+
+  // One score in words: the value of a field, like "97%", "41 wpm" or "1:05".
+  function fieldText(f, v) {
+    if (v === null || v === undefined) return "";
+    if (f.seconds) return clock(v);
+    var n = Number(v).toFixed(f.decimals || 0);
+    if (!f.unit) return n;
+    if (f.unit === "%") return n + "%";
+    return n + " " + (Number(v) === 1 ? f.unit.replace(/s$/, "") : f.unit);
+  }
+
+  // A whole result in words, for cards and lists: "97% · 41 wpm · 1:05" (times played left out).
+  function resultText(spec, values) {
+    if (!spec || !values) return "";
+    return spec.fields.filter(function (f) { return f.source !== "plays" && values[f.key] !== null && values[f.key] !== undefined; })
+      .map(function (f) { return fieldText(f, values[f.key]); }).join(" · ");
+  }
+
+  // Which result counts, in words (see COUNTS in scoring.py).
+  var COUNTS_TEXT = {
+    first: "Each player's first attempt counts.",
+    best: "Each player's best attempt counts.",
+    latest: "Each player's latest attempt counts.",
+    total: "Each player's attempts are added up."
+  };
 
   function when(iso) {
     if (!iso) return "";
@@ -276,8 +301,8 @@
     return el("div", { class: "empty" }, [
       el("h2", { text: "No games on this device yet" }),
       admin
-        ? el("p", {}, ["Install games on the ", el("a", { href: "#/status", text: "Setup page" }),
-            ". Saved and Scored Games can also come in Kolibri channels."])
+        ? el("p", {}, ["Saved and Scored Games come in Kolibri channels: add them in Kolibri Studio and import the channel. ",
+            "Install Server Games, like Wiki BLAZE, on the ", el("a", { href: "#/status", text: "Setup page" }), "."])
         : el("p", { text: "Ask your coach or administrator to add some." })
     ]);
   }
@@ -287,6 +312,8 @@
       if (firstUsed) return el("span", { class: "rule-note practice", text: "Your first attempt is done. Playing again is practice." });
       return el("span", { class: "rule-note", text: "Your first attempt counts on the scoreboard." });
     }
+    if (counts === "latest") return el("span", { class: "rule-note", text: "Your latest attempt counts on the scoreboard." });
+    if (counts === "total") return el("span", { class: "rule-note", text: "Every attempt adds to your score." });
     return el("span", { class: "rule-note", text: "Your best attempt counts on the scoreboard." });
   }
 
@@ -298,7 +325,7 @@
 
   function channelCard(g) {
     var s = g.summary || {};
-    var label = (g.scoreboards && g.scoreboards.board_label) || "Scoreboard";
+    var label = ((g.scoring && g.scoring.boards && g.scoring.boards.label) || "scoreboard").toLowerCase();
     var facts = [
       el("span", { text: plural((g.resources || []).length, "resource") + " in Learn" }),
       el("span", { text: s.boards ? "You have scores on " + plural(s.boards, label) : "No scores from you yet" })
@@ -326,7 +353,8 @@
     else bits.push("Closed " + when(c.closes_at));
     if (isCoach()) bits.push(c.class_name);
     var mine = c.mine;
-    if (mine && mine.counted && g.scoring) bits.push("Your result: " + scoreText(g.scoring, mine.counted.score));
+    if (mine && mine.counted && g.scoring) bits.push("Your result: " + resultText(g.scoring, mine.counted.values));
+    else if (mine && mine.boards && Object.keys(mine.boards).length) bits.push("You've played " + plural(Object.keys(mine.boards).length, (g.scoring.boards.label || "level").toLowerCase()));
     else if (mine && mine.attempts && c.state !== "upcoming") bits.push("Not finished yet");
     var actions = [];
     var base = g.key + "/c/" + c.id;
@@ -362,7 +390,9 @@
       facts.push(el("span", { text: "Your progress is saved to your account." }));
     } else if (s && freeBoard) {
       if (s.counted) {
-        facts.push(el("span", {}, ["Your free-play result ", el("b", { text: scoreText(g.scoring, s.counted.score) }), " in " + clock(s.counted.seconds)]));
+        facts.push(el("span", {}, ["Your free-play result ", el("b", { text: resultText(g.scoring, s.counted.values) })]));
+      } else if (s.boards && Object.keys(s.boards).length) {
+        facts.push(el("span", { text: "You've played " + plural(Object.keys(s.boards).length, (g.scoring.boards.label || "level").toLowerCase()) }));
       } else {
         facts.push(el("span", { text: s.attempts ? "No finished result yet" : "Not played yet" }));
       }
@@ -512,7 +542,7 @@
       };
     },
     "attempt.start": function (play, params) {
-      return api(gamePath(play.key, "/attempts"), { body: { resume: params.resume !== false, challenge: play.challengeId } }).then(function (data) {
+      return api(gamePath(play.key, "/attempts"), { body: { resume: params.resume !== false, challenge: play.challengeId, board: params.board || "" } }).then(function (data) {
         play.attempt = data.attempt;
         updateRuleChip(play, data.attempt);
         startClock(play, data.time_limit, data.elapsed);
@@ -541,7 +571,7 @@
       play.timeChip.hidden = true;
       return api(gamePath(play.key, "/attempts/" + id + "/abandon"), { body: {} });
     },
-    "scoreboard.get": function (play) { return api(gamePath(play.key, "/scoreboard" + q({ challenge: play.challengeId }))); },
+    "scoreboard.get": function (play, params) { return api(gamePath(play.key, "/scoreboard" + q({ challenge: play.challengeId, board: params.board }))); },
     "results.mine": function (play) { return api(gamePath(play.key, "/mine" + q({ challenge: play.challengeId }))); },
     "state.get": function (play) { return api(gamePath(play.key, "/state")).then(function (d) { return d.data; }); },
     "state.set": function (play, params) { return api(gamePath(play.key, "/state"), { body: { data: params.data } }); },
@@ -588,19 +618,23 @@
     });
   }
 
-  function renderBoard(key, challengeId, classId) {
+  function boardHref(key, challengeId, boardId) {
+    return "#/board/" + key + (challengeId ? "/c/" + challengeId : "") + (boardId !== null && boardId !== undefined ? "/b/" + encodeURIComponent(boardId) : "");
+  }
+
+  function renderBoard(key, challengeId, boardId, classId) {
     stopPlay();
     findGame(key).then(function (g) {
       return Promise.all([
-        api(gamePath(key, "/scoreboard" + q({ challenge: challengeId, "class": classId }))),
-        isCoach() && !challengeId ? classPicker(classId, function (v) { renderBoard(key, challengeId, v); }, true) : null
+        api(gamePath(key, "/scoreboard" + q({ challenge: challengeId, "class": classId, board: boardId }))),
+        isCoach() && !challengeId ? classPicker(classId, function (v) { renderBoard(key, challengeId, boardId, v); }, true) : null
       ]).then(function (res) {
         var data = res[0], picker = res[1], c = data.challenge;
         var title = c ? c.title : g.title + " scoreboard";
         var intro = [];
         if (c) intro.push(g.title + " challenge for " + c.class_name + ".");
         else intro.push("Free play.");
-        intro.push(data.counts === "first" ? "Each player's first attempt." : "Each player's best attempt.");
+        intro.push(COUNTS_TEXT[data.counts] || "");
         var playHref = "#/play/" + key + (c ? "/c/" + c.id : "");
         var canPlay = !c || c.state === "open";
         var head = pageHead([["Games", "#/"]], title, intro.join(" "), [
@@ -614,12 +648,27 @@
         } else if (!data.rows.length) {
           parts.push(el("div", { class: "empty" }, [el("h2", { text: "No results yet" }), el("p", { text: "Be the first to finish." })]));
         } else {
-          parts.push(el("div", { class: "panel" }, [boardTable(g, data.rows)]));
+          var spec = data.board_spec || data.spec;
+          var current = (data.boards || []).filter(function (b) { return b.id === data.board; })[0];
+          var panel = boardPanel(spec, { name: current ? current.name : "", rows: data.rows });
+          if (data.boards && data.boards.length > 1) {
+            var nav = el("nav", { class: "boards", "aria-label": (data.spec.boards && data.spec.boards.label) || "Boards" });
+            data.boards.forEach(function (b) {
+              nav.appendChild(el("a", {
+                class: "board-link" + (b.id === data.board ? " current" : ""),
+                href: boardHref(key, challengeId, b.id),
+                "aria-current": b.id === data.board ? "page" : null
+              }, [el("span", { class: "board-name", text: b.name })]));
+            });
+            parts.push(el("div", { class: "scores" }, [nav, panel]));
+          } else {
+            parts.push(panel);
+          }
         }
         if (data.visibility === "hidden" && !isCoach()) parts.push(el("p", { class: "footnote", text: "Your coach has hidden other players' results." }));
         if (data.visibility === "initials" && !isCoach()) parts.push(el("p", { class: "footnote", text: "Other players are shown by their initials." }));
         if (c && c.state !== "closed" && isRace(g)) parts.push(el("p", { class: "footnote", text: "Everyone's routes are shown here when the challenge closes." }));
-        setView(parts, { title: g.title });
+        setView(parts, { title: g.title, keepScroll: boardId !== null && boardId !== undefined });
       });
     }).catch(showError);
   }
@@ -665,36 +714,7 @@
     return "Couldn't work it out." + (best.message ? " " + best.message : "");
   }
 
-  function boardTable(g, rows) {
-    var label = (g.scoring && g.scoring.label) || "Score";
-    var showRoutes = rows.some(function (r) { return r.route; });
-    var tbody = el("tbody");
-    rows.forEach(function (r) {
-      tbody.appendChild(el("tr", { class: r.me ? "me" : "" }, [
-        el("td", {}, [el("span", { class: "rank r" + r.rank, text: String(r.rank) })]),
-        el("td", { text: r.name + (r.me ? " (you)" : "") }),
-        el("td", { class: "num", text: scoreText(g.scoring, r.score) }),
-        el("td", { class: "num", text: clock(r.seconds) }),
-        showRoutes ? el("td", { class: "route-cell", text: (r.route || []).join(" → ") }) : null
-      ]));
-    });
-    return el("table", {}, [
-      el("thead", {}, [el("tr", {}, [el("th", { text: "Rank" }), el("th", { text: "Name" }),
-        el("th", { class: "num", text: label }), el("th", { class: "num", text: "Time" }),
-        showRoutes ? el("th", { text: "Route" }) : null])]),
-      tbody
-    ]);
-  }
-
   // ================================================================ Scored Games in channels
-
-  function fieldText(f, v) {
-    if (v === null || v === undefined) return "";
-    if (f.seconds) return clock(v);
-    var n = Number(v).toFixed(f.decimals || 0);
-    if (!f.unit) return n;
-    return f.unit === "%" ? n + "%" : n + " " + f.unit;
-  }
 
   function renderScores(key, boardId, classId) {
     stopPlay();
@@ -710,7 +730,8 @@
     var spec = data.spec;
     var csv = gamePath(g.key, "/boards" + q({ format: "csv", "class": classId }));
     var head = pageHead([["Games", "#/"]], g.title + " scoreboard",
-      "Scores from playing " + g.title + " in Learn. Each learner's best result counts.",
+      "Scores from playing " + g.title + " in Learn. Each learner's best result counts" +
+        (spec.boards && spec.boards.total ? ", and " + spec.boards.total_label + " adds them up." : "."),
       [picker, isCoach() && data.boards.length ? el("a", { class: "button", href: csv, text: "Download CSV" }) : null]);
     var notes = [];
     if (data.visibility === "hidden" && !isCoach()) notes.push("Your coach has hidden other players' results.");
@@ -735,7 +756,7 @@
         "aria-current": b === board ? "page" : null
       }, [el("span", { class: "board-name", text: b.name }), el("span", { class: "board-sub", text: mine })]));
     });
-    setView([head, el("div", { class: "scores" }, [nav, boardPanel(spec, board)])].concat(footer), { title: g.title, keepScroll: !!boardId });
+    setView([head, el("div", { class: "scores" }, [nav, boardPanel(board.spec || spec, board)])].concat(footer), { title: g.title, keepScroll: !!boardId });
   }
 
   function resourceLinks(resources) {
@@ -745,18 +766,23 @@
     }).reduce(function (a, b) { return a.concat(b); }, [])));
   }
 
+  // One scoreboard: a column for each of the game's fields (and, for Wiki BLAZE
+  // after a challenge closes, each player's route).
   function boardPanel(spec, board) {
     var fields = spec.fields;
+    var showRoutes = board.rows.some(function (r) { return r.route; });
     var tbody = el("tbody");
     board.rows.forEach(function (r) {
       tbody.appendChild(el("tr", { class: r.me ? "me" : "" }, [
         el("td", {}, [el("span", { class: "rank r" + r.rank, text: String(r.rank) })]),
         el("td", { text: r.name + (r.me ? " (you)" : "") })
-      ].concat(fields.map(function (f) { return el("td", { class: "num", text: fieldText(f, r.values[f.key]) }); }))));
+      ].concat(fields.map(function (f) { return el("td", { class: "num", text: fieldText(f, r.values[f.key]) }); }))
+        .concat(showRoutes ? [el("td", { class: "route-cell", text: (r.route || []).join(" → ") })] : [])));
     });
     var table = el("table", {}, [
       el("thead", {}, [el("tr", {}, [el("th", { text: "Rank" }), el("th", { text: "Name" })].concat(
-        fields.map(function (f) { return el("th", { class: "num", text: f.label }); })))]),
+        fields.map(function (f) { return el("th", { class: "num", text: f.label }); }))
+        .concat(showRoutes ? [el("th", { text: "Route" })] : []))]),
       tbody
     ]);
     var ranked = spec.rank_by.map(function (k) {
@@ -764,7 +790,7 @@
       return f.label.toLowerCase() + (f.order === "asc" ? " (lower is better)" : " (higher is better)");
     });
     return el("section", { class: "panel board" }, [
-      el("h2", { text: board.name }),
+      board.name ? el("h2", { text: board.name }) : null,
       el("p", { class: "footnote", text: "Ranked by " + ranked.join(", then ") + "." }),
       board.rows.length ? table : el("p", { text: "You don't have a score here yet." }),
       resourceLinks(board.resources)
@@ -773,14 +799,14 @@
 
   // ================================================================ results (coaches)
 
-  function renderResults(key, challengeId, classId) {
+  function renderResults(key, challengeId, classId, boardId) {
     stopPlay();
     findGame(key).then(function (g) {
       return loadClasses().then(function (classes) {
         if (!challengeId && !classes.whole_facility && !classId && classes.classes.length) classId = classes.classes[0].id;
         return Promise.all([
-          api(gamePath(key, "/results" + q({ challenge: challengeId, "class": classId }))),
-          challengeId ? null : classPicker(classId, function (v) { renderResults(key, null, v); }, classes.whole_facility)
+          api(gamePath(key, "/results" + q({ challenge: challengeId, "class": classId, board: boardId }))),
+          challengeId ? null : classPicker(classId, function (v) { renderResults(key, null, v, boardId); }, classes.whole_facility)
         ]).then(function (res) { drawResults(g, res[0], res[1], challengeId, classId); });
       });
     }).catch(showError);
@@ -788,24 +814,38 @@
 
   function drawResults(g, data, picker, challengeId, classId) {
     var key = g.key, c = data.challenge;
-    var csv = gamePath(key, "/results" + q({ format: "csv", challenge: challengeId, "class": classId }));
+    var csv = gamePath(key, "/results" + q({ format: "csv", challenge: challengeId, "class": classId, board: data.board }));
+    var spec = data.scoring;
+    // A column for each score the game reports, and the time (times played is the Attempts column).
+    var shown = spec ? spec.fields.filter(function (f) { return f.source !== "plays"; }) : [];
+    var levelPicker = null;
+    if (data.boards && data.boards.length > 1) {
+      levelPicker = el("select", { "aria-label": (spec.boards && spec.boards.label) || "Level", onchange: function () {
+        location.hash = "#/results/" + key + (challengeId ? "/c/" + challengeId : "") + "/b/" + encodeURIComponent(levelPicker.value);
+      } });
+      data.boards.forEach(function (b) { levelPicker.appendChild(el("option", { value: b.id, text: b.name })); });
+      levelPicker.value = data.board;
+    }
     var crumbs = [["Games", "#/"]];
     if (c) crumbs.push(["Challenges", "#/challenges/" + key]);
     var head = pageHead(crumbs, (c ? c.title : g.title + " free play") + " results",
-      data.counts === "first"
-        ? "The counted result is each learner's first attempt. Later attempts are practice."
-        : "The counted result is each learner's best attempt.",
-      [picker, el("a", { class: "button", href: csv, text: "Download CSV" })]);
+      {
+        first: "The counted result is each learner's first attempt. Later attempts are practice.",
+        best: "The counted result is each learner's best attempt.",
+        latest: "The counted result is each learner's latest attempt.",
+        total: "The counted result is each learner's attempts added up."
+      }[data.counts] || "",
+      [levelPicker, picker, el("a", { class: "button", href: csv, text: "Download CSV" })]);
     if (!data.rows.length) {
       setView([head, el("div", { class: "empty" }, [el("h2", { text: "Nobody has played yet" }),
         el("p", { text: classId || c ? "No one in this class has played yet." : "Results appear here once learners play." })])], { title: g.title });
       return;
     }
-    var label = (data.scoring && data.scoring.label) || "Score";
     var tbody = el("tbody");
+    var columns = 5 + shown.length;
     data.rows.forEach(function (r) {
       var counted = r.counted, best = r.best;
-      var historyRow = el("tr", { class: "history", hidden: true }, [el("td", { colspan: "7" }, [historyList(g, r)])]);
+      var historyRow = el("tr", { class: "history", hidden: true }, [el("td", { colspan: String(columns) }, [historyList(g, r, spec)])]);
       var toggle = el("button", { class: "quiet", type: "button", text: "History", "aria-expanded": "false",
         onclick: function () {
           historyRow.hidden = !historyRow.hidden;
@@ -818,34 +858,35 @@
             .then(function () { toast("Reset " + r.name + "."); renderResults(key, challengeId, classId); })
             .catch(function (e) { toast(e.message); });
         } });
+      var cells = shown.map(function (f, i) {
+        if (!counted) return el("td", { class: "num", text: i === 0 ? (r.attempts ? "Didn't finish" : "Not played") : "" });
+        return el("td", { class: "num", text: fieldText(f, counted.values[f.key]) });
+      });
       tbody.appendChild(el("tr", {}, [
         el("td", {}, [r.rank ? el("span", { class: "rank r" + r.rank, text: String(r.rank) }) : ""]),
-        el("td", { text: r.name }),
-        el("td", { class: "num" }, counted ? [scoreText(g.scoring, counted.score)] : [r.attempts ? "Didn't finish" : "Not played"]),
-        el("td", { class: "num", text: counted ? clock(counted.seconds) : "" }),
-        el("td", { class: "num", text: best ? scoreText(g.scoring, best.score) : "" }),
+        el("td", { text: r.name })
+      ].concat(cells).concat([
+        el("td", { class: "num", text: best ? resultText(spec, best.values) : "" }),
         el("td", { class: "num", text: String(r.attempts) }),
         el("td", {}, [el("div", { class: "row" }, [r.attempts ? toggle : null, r.attempts || r.reset_attempts ? reset : null])])
-      ]));
+      ])));
       tbody.appendChild(historyRow);
     });
     var table = el("table", {}, [
-      el("thead", {}, [el("tr", {}, [
-        el("th", { text: "Rank" }), el("th", { text: "Learner" }), el("th", { class: "num", text: "Counted " + label.toLowerCase() }),
-        el("th", { class: "num", text: "Time" }), el("th", { class: "num", text: "Best" }), el("th", { class: "num", text: "Attempts" }),
-        el("th", { text: "" })
-      ])]),
+      el("thead", {}, [el("tr", {}, [el("th", { text: "Rank" }), el("th", { text: "Learner" })]
+        .concat(shown.map(function (f) { return el("th", { class: "num", text: f.label }); }))
+        .concat([el("th", { class: "num", text: "Best" }), el("th", { class: "num", text: "Attempts" }), el("th", { text: "" })]))]),
       tbody
     ]);
     setView([head, c ? challengeFacts(g, c) : null, el("div", { class: "panel" }, [table])], { title: g.title });
   }
 
   // One learner's attempts. Wiki BLAZE attempts show the route and every move.
-  function historyList(g, r) {
+  function historyList(g, r, spec) {
     var list = el("ol");
     r.history.forEach(function (a) {
       var bits = ["Attempt " + a.number + ": "];
-      if (a.status === "finished") bits.push(scoreText(g.scoring, a.score) + " in " + clock(a.seconds));
+      if (a.status === "finished") bits.push(a.values ? resultText(spec, a.values) : scoreText(spec, a.score) + " in " + clock(a.seconds));
       else bits.push({ started: "in progress", abandoned: "left without finishing", expired: "ran out of time" }[a.status] || a.status);
       var route = a.detail && a.detail.route;
       var moves = (a.events || []);
@@ -1352,8 +1393,9 @@
       }
     }, [
       el("div", { class: "field" }, [
-        el("label", { for: "install-file", text: "Install or update a game" }),
-        el("div", { class: "help", text: "Choose the game's .zip file (at most " + data.max_upload_mb + " MB). Installing a newer version keeps the old one, so you can go back." }),
+        el("label", { for: "install-file", text: "Install or update a Server Game" }),
+        el("div", { class: "help", text: "Choose the game's .zip file (at most " + data.max_upload_mb + " MB). Installing a newer version keeps the old one, so you can go back. " +
+          "Saved and Scored Games go in Kolibri channels instead: add them in Kolibri Studio." }),
         file
       ]),
       el("div", { class: "row" }, [btn]),
@@ -1443,8 +1485,10 @@
     // ".../c/<id>" picks a challenge
     var challenge = parts[2] === "c" && parts[3] ? parts[3] : null;
     if (name === "play" && key) return renderPlay(key, challenge);
-    if (name === "board" && key) return renderBoard(key, challenge);
-    if (name === "results" && key) return renderResults(key, challenge);
+    // ".../b/<id>" picks a board (a level, or the total)
+    var bAt = parts.indexOf("b", 2), board = bAt > 0 && parts[bAt + 1] !== undefined ? parts[bAt + 1] : null;
+    if (name === "board" && key) return renderBoard(key, challenge, board);
+    if (name === "results" && key) return renderResults(key, challenge, null, board);
     if (name === "settings" && key) return renderSettings(key);
     if (name === "challenges" && key) {
       if (parts[2] === "new") return renderChallengeForm(key, null);

@@ -336,8 +336,12 @@ try:
     lesson1 = html5_resource("Lesson 1: Left-hand home keys")
     lesson1_copy = html5_resource("Lesson 1 again")
     plain = html5_resource("An ordinary HTML5 app", with_manifest=False)
+    # What EduGame Kit writes: every field, in the order the save helper saves them.
     kit = {"format": 1, "type": "scored", "id": "org.example.kit-hunt", "version": "1.0.0", "title": "Kit Hunt",
-           "scoring": {"label": "Guesses", "order": "asc", "tiebreak": "seconds"}}
+           "scoring": {"fields": [{"key": "score", "label": "Guesses", "order": "asc"},
+                                  {"key": "time", "label": "Time", "source": "time", "order": "asc", "total": "sum"},
+                                  {"key": "plays", "label": "Times played", "source": "plays"}],
+                       "rank_by": ["score", "time"]}}
     kit_node = html5_resource("Kit Hunt", manifest=kit)
     html5_resource("Kit Story", manifest={"format": 1, "type": "saved", "id": "org.example.kit-story",
                                           "version": "1.0.0", "title": "Kit Story"})

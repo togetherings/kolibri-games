@@ -6,15 +6,42 @@
   "title": "Lessons In Typing",
   "description": "Typing lessons. Each lesson teaches a few new keys.",
   "color": "#2f6f5e",
-  "scoreboards": {
-    "saved_in": "scorm",
-    "board_label": "Lesson",
-    "name_boards_after_resource": true,
-    "only_if": { "from": "done", "equals": 1 },
+  "scoring": {
+    "saved_data": {
+      "in": "scorm",
+      "only_if": {
+        "from": "done",
+        "equals": 1
+      }
+    },
     "fields": [
-      { "key": "acc", "from": "acc", "label": "Accuracy", "unit": "%", "order": "desc" },
-      { "key": "wpm", "from": "wpm", "label": "Speed", "unit": "wpm", "order": "desc" }
+      {
+        "key": "acc",
+        "label": "Accuracy",
+        "unit": "%",
+        "order": "desc",
+        "total": "average"
+      },
+      {
+        "key": "wpm",
+        "label": "Speed",
+        "unit": "wpm",
+        "order": "desc",
+        "total": "average"
+      }
     ],
-    "rank_by": ["acc", "wpm"]
+    "rank_by": [
+      "acc",
+      "wpm"
+    ],
+    "counts": "best",
+    "boards": {
+      "label": "Lesson",
+      "after_resource": true,
+      "total": {
+        "label": "All lessons",
+        "count_label": "Lessons passed"
+      }
+    }
   }
 }

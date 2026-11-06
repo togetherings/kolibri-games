@@ -328,7 +328,7 @@ class Handler(BaseHTTPRequestHandler):
         if rest == "/attempts" and post:
             data = self.body()
             return self.json(201, service.start(self.game(key), player, challenge_id(data.get("challenge")),
-                                                resume=bool(data.get("resume", True))))
+                                                resume=bool(data.get("resume", True)), board=data.get("board") or ""))
         m = re.match(r"^/attempts/(\d+)/(moves|finish|abandon)$", rest)
         if m and post:
             attempt_id, action = int(m.group(1)), m.group(2)
@@ -346,7 +346,8 @@ class Handler(BaseHTTPRequestHandler):
         if rest == "/scoreboard" and get:
             users = self.class_users(player, query.get("class")) if player.is_coach else None
             ids = {u for u, _ in users} if users else None
-            return self.json(200, service.scoreboard(self.game(key, playable=False), player, cid, user_ids=ids))
+            return self.json(200, service.scoreboard(self.game(key, playable=False), player, cid, user_ids=ids,
+                                                     board=query.get("board")))
         if rest == "/mine" and get:
             return self.json(200, {"attempts": service.my_attempts(self.game(key, playable=False), player, cid)})
         if rest == "/boards" and get:
@@ -372,7 +373,7 @@ class Handler(BaseHTTPRequestHandler):
             if cid is not FREE_PLAY:
                 c = store.challenge_get(cid)
                 class_id = c.class_id if c else class_id
-            data = service.coach_results(game, player, cid, self.class_users(player, class_id))
+            data = service.coach_results(game, player, cid, self.class_users(player, class_id), board=query.get("board"))
             if query.get("format") == "csv":
                 return self.csv(views_common.results_csv(data))
             return self.json(200, data)

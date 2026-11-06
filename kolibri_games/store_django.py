@@ -36,7 +36,7 @@ class DjangoStore(Store):
             return None
 
     def attempt_create(self, **fields):
-        json_fields = {k: fields.pop(k) for k in ("public", "state", "events", "detail")}
+        json_fields = {k: fields.pop(k) for k in ("public", "state", "events", "detail", "values") if k in fields}
         attempt = Attempt(**fields)
         for k, v in json_fields.items():
             setattr(attempt, k, v)

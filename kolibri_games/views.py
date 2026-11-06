@@ -312,7 +312,8 @@ def game_session(request, player, key):
 @api
 def start(request, player, key):
     data = _body(request)
-    result = service.start(_game(key), player, _challenge_id(data.get("challenge")), resume=bool(data.get("resume", True)))
+    result = service.start(_game(key), player, _challenge_id(data.get("challenge")), resume=bool(data.get("resume", True)),
+                           board=data.get("board") or "")
     return JsonResponse(result, status=201)
 
 
@@ -355,7 +356,8 @@ def scoreboard(request, player, key):
     class_id = request.GET.get("class")
     if class_id and player.is_coach:
         user_ids = {u for u, _ in _users_in_class(player, class_id)}
-    return JsonResponse(service.scoreboard(game, player, _challenge_id(request.GET.get("challenge")), user_ids=user_ids))
+    return JsonResponse(service.scoreboard(game, player, _challenge_id(request.GET.get("challenge")), user_ids=user_ids,
+                                           board=request.GET.get("board")))
 
 
 @require_GET
@@ -376,7 +378,7 @@ def results(request, player, key):
         class_id = c.class_id if c is not None else class_id  # a challenge's results are its class
     elif player.coach_class_ids is not None and not class_id:
         raise PlatformError("Choose one of your classes.", "choose_class", 400)
-    data = service.coach_results(game, player, challenge_id, _users_in_class(player, class_id))
+    data = service.coach_results(game, player, challenge_id, _users_in_class(player, class_id), board=request.GET.get("board"))
     if request.GET.get("format") == "csv":
         return _csv(results_csv(data), game, "results")
     return JsonResponse(data)

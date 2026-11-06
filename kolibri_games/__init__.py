@@ -6,15 +6,15 @@ There are three kinds of game, all zipped HTML5 apps with a
 ``kolibri-game.json`` manifest inside (see manifest.py):
 
 * Saved Games keep each learner's progress.
-* Scored Games also report a score for scoreboards.
+* Scored Games also report scores for scoreboards (see scoring.py).
 * Server Games need this plugin's server to play (Wiki BLAZE, BeaconHunt).
 
-Any of them can be installed by a device administrator and played on the
-games page (see install.py). Saved and Scored Games can also go in Kolibri
-channels and be played in Learn, including offline in the Kolibri app; the
-games page shows Scored Games' scoreboards from the scores they save (see
-channel.py). Saved and Scored Games are made with edugame-kit
-(github.com/togetherings/edugame-kit), which also packs them for other systems.
+Saved and Scored Games are made with EduGame Kit
+(github.com/togetherings/edugame-kit) and added to Kolibri through Kolibri
+Studio, in channels; learners play them in Learn, also offline in the Kolibri
+app, and the games page shows Scored Games' scoreboards from the scores they
+save (see channel.py). Server Games, which can't go through Studio, are
+installed by a device administrator on the games page (see install.py).
 """
 
 __version__ = "0.2.0"

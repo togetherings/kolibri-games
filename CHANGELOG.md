@@ -9,15 +9,32 @@
   in Kolibri channels, and work outside Kolibri too: make them with
   [EduGame Kit](https://github.com/togetherings/edugame-kit). This replaces Free-play Games and
   Classroom Games (`"free-play"` and `"classroom"` are gone).
-- Scored Games in channels made with EduGame Kit need only a `scoring` section: the scoreboard
-  is read from the board `main`, and save data under keys starting with `_` is skipped. Saved
-  Games in channels are left alone, and Server Games in channels are shown as a problem.
+- **Saved and Scored Games are added through Kolibri Studio**, in channels; Server Games are
+  installed on the games page. Saved Games in channels are left alone, and Server Games in
+  channels are shown as a problem.
+- **Scores with several values**, each ranked its own way: `scoring.fields` and `rank_by` (the
+  first field ranks, the next ones break ties, each higher or lower is better). The short form
+  with one score still works. One `scoring` section now describes scores on the games page and
+  in channels alike; the old `scoreboards` section is part of it (`saved_data`, and `from` on
+  each field). See docs/SCORING.md.
+- **Levels with their own scoreboards** (`scoring.boards`), and a **total scoreboard** that adds
+  up each learner's results on every level. Games on the games page name the level with
+  `KG.start({board})`; games in channels save one entry per level.
+- **Which attempt counts** can also be the **latest**, or **every attempt added up** (for points
+  that build up), as well as the first or the best.
+- Games report several values with `KG.finish({values})`. Scoreboards, the coaches' results page
+  and the CSV files show every value. Attempts keep the values and their level (a new migration).
+- Scored Games in channels made with EduGame Kit: each board is a list of the fields' values,
+  save data under keys starting with `_` is skipped, and each resource of a kit game without
+  levels has its own scoreboard.
 - The games page shows a game's kind next to its title. Saved Games have a **Play** button and
   no scoreboard or challenges. Games from channels are listed under **Scored Games in Learn**.
 - Manifests can list the `languages` a game can be played in.
 - Game keys on the games page start with `g-` (they were `f-`).
 - Number Hunt and Memory Match have moved to EduGame Kit as its examples, so they're no longer
-  attached to releases here (copies stay in `tests/fixtures/games` for the tests).
+  attached to releases here (copies stay in `tests/fixtures/games` for the tests). The README
+  links every game: Wiki BLAZE, BeaconHunt, Lessons In Typing, Studies In Geography, Sparkle and
+  BoBo Na Mi.
 - **Wiki BLAZE** (Browsing Links A-to-Z Exploration): race from one Wikipedia article to another
   by following links, using a Wikipedia `.zim` file on the device. The server checks every link
   and keeps each learner's chain. Going back to an earlier article is free, and the score is the

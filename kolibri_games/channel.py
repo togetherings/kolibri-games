@@ -3,8 +3,8 @@ Scored Games in Kolibri channels: HTML5 apps that learners open from Learn.
 
 Kolibri keeps each learner's saved data for an HTML5 app (for example SCORM
 ``cmi.suspend_data``) on the server. A Scored Game's ``kolibri-game.json``
-says how to read scores out of that data (or, for games made with
-edugame-kit, its ``scoring`` is enough: see manifest.default_scoreboards).
+``scoring`` says what its scores are and, for games not made with EduGame Kit,
+how to read them from that data (scoring.saved_data; see scoring.py).
 This module turns the saved data of every resource (lesson) of one game into
 scoreboards, so the games page can show them. Saved Games in channels need
 nothing from the plugin. No Django or Kolibri imports.
@@ -16,13 +16,17 @@ Words used here:
   have many, and they can be in different lessons and channels.
 * board: one scored thing inside the saved data, for example a typing lesson
   or a map played in one mode. The same board can be saved by more than one
-  resource; those are merged, keeping each learner's best result.
+  resource; those are merged, keeping each learner's best result. An EduGame
+  Kit game without levels saves one board, "main", in each resource, and each
+  of those is a board of its own, named after the resource.
+* total: with scoring.boards.total, one more board adds up each learner's
+  results on every board.
 """
 import json
 import math
 import re
 
-from . import ranking
+from . import ranking, scoring
 from .versions import VersionError, parse_version
 
 KEY_PREFIX = "c-"  # keys of games in channels look like c-org.example.game
@@ -84,17 +88,21 @@ def _number(value):
 
 
 def read_boards(spec, content_state):
-    """{board_id: {field_key: number or None}} from one learner's saved data."""
-    data = suspend_data(content_state) if spec.get("saved_in", "scorm") == "scorm" else None
+    """{board_id: {field_key: number or None}} from one learner's saved data.
+
+    ``spec`` is the game's scoring spec (scoring.py). Keys starting with "_"
+    are never boards: EduGame Kit keeps the game's own save under "_save".
+    """
+    data = suspend_data(content_state) if spec["saved_data"]["in"] == "scorm" else None
     if not data:
         return {}
-    only_if = spec.get("only_if")
+    only_if = spec["saved_data"].get("only_if")
     found = {}
     for board_id, entry in list(data.items())[:MAX_BOARDS_PER_SAVE]:
         if not isinstance(board_id, str) or not board_id or len(board_id) > MAX_BOARD_ID:
             continue
         if board_id.startswith("_"):
-            continue  # not a board: the game's own save (edugame-kit keeps it under "_save")
+            continue
         if only_if and _pick(entry, only_if["from"]) != only_if["equals"]:
             continue
         values = {f["key"]: _number(_pick(entry, f["from"])) for f in spec["fields"]}
@@ -104,22 +112,9 @@ def read_boards(spec, content_state):
     return found
 
 
-# ------------------------------------------------------------- board names
-
-
 def board_name(spec, board_id):
     """A board's display name from the manifest, or None if it doesn't name it."""
-    names = spec.get("board_names") or {}
-    # Rules come first: they say how to build a name from part of the id, and
-    # {name} is the board_names entry for that part (or the part itself).
-    for rule in spec.get("board_name_rules") or []:
-        prefix, suffix = rule.get("prefix", ""), rule.get("suffix", "")
-        if len(board_id) <= len(prefix) + len(suffix):
-            continue
-        if board_id.startswith(prefix) and board_id.endswith(suffix):
-            base = board_id[len(prefix):len(board_id) - len(suffix)] if suffix else board_id[len(prefix):]
-            return rule["name"].replace("{name}", names.get(base, base)).replace("{id}", base)
-    return names.get(board_id)
+    return scoring.board_name(spec, board_id)
 
 
 def natural_key(text):
@@ -129,30 +124,17 @@ def natural_key(text):
 # ----------------------------------------------------------------- ranking
 
 
-def _rank_key(spec, values):
-    fields = {f["key"]: f for f in spec["fields"]}
-    key = []
-    for k in spec["rank_by"]:
-        v = values.get(k)
-        if v is None:
-            key.append((1, 0))
-        else:
-            key.append((0, -v if fields[k]["order"] == "desc" else v))
-    return tuple(key)
-
-
 def combine(spec, entries):
-    """One learner's result on one board from the entries saved by different resources."""
-    best = min(entries, key=lambda values: _rank_key(spec, values))
-    result = {}
+    """One learner's result on one board, from the entries saved by different copies of it.
+
+    The best entry wins; counts of plays are added up.
+    """
+    best = min(entries, key=lambda values: ranking.rank_key(spec, values))
+    result = dict(best)
     for f in spec["fields"]:
-        vals = [e.get(f["key"]) for e in entries if e.get(f["key"]) is not None]
-        if f["combine"] == "sum":
+        if f["source"] == "plays":
+            vals = [e.get(f["key"]) for e in entries if e.get(f["key"]) is not None]
             result[f["key"]] = sum(vals) if vals else None
-        elif f["combine"] == "max":
-            result[f["key"]] = max(vals) if vals else None
-        else:
-            result[f["key"]] = best.get(f["key"])
     return result
 
 
@@ -235,12 +217,13 @@ def ranking_version(version):
 
 
 def merged_spec(manifests, newest):
-    """The newest manifest's scoreboards, with board names from every version (newer names win)."""
+    """The newest manifest's scoring, with board names from every version (newer names win)."""
     spec = dict(newest.channel_spec)
-    names = {}
-    for m in sorted(manifests, key=lambda m: ranking_version(m.version)):
-        names.update((m.channel_spec or {}).get("board_names") or {})
-    spec["board_names"] = names
+    if spec.get("boards"):
+        names = {}
+        for m in sorted(manifests, key=lambda m: ranking_version(m.version)):
+            names.update(((m.channel_spec or {}).get("boards") or {}).get("names") or {})
+        spec["boards"] = dict(spec["boards"], names=names)
     return spec
 
 
@@ -261,6 +244,13 @@ def group_resources(resources):
 # -------------------------------------------------------------- scoreboards
 
 
+def _board_key(spec, board_id, resource):
+    """EduGame Kit games without levels save one board, "main", in each resource: each is its own board."""
+    if spec["saved_data"]["format"] == "kit" and board_id == scoring.MAIN_BOARD:
+        return "r-" + (resource.content_id or "")
+    return board_id
+
+
 def collect(game, saves):
     """{board_id: {"users": {user_id: [values...]}, "names": {user_id: name}, "resources": [content_id]}}"""
     resources = {r.content_id: r for r in game.resources}
@@ -270,6 +260,7 @@ def collect(game, saves):
         if resource is None:
             continue
         for board_id, values in read_boards(game.spec, save.get("content_state")).items():
+            board_id = _board_key(game.spec, board_id, resource)
             board = boards.setdefault(board_id, {"users": {}, "names": {}, "resources": []})
             board["users"].setdefault(save["user_id"], []).append(values)
             board["names"][save["user_id"]] = save.get("user_name") or "?"
@@ -282,22 +273,29 @@ def _board_title(game, board_id, resource_ids, resources, boards_in_resource):
     name = board_name(game.spec, board_id)
     if name:
         return name
-    if game.spec.get("name_boards_after_resource") and resource_ids:
+    by_resource = board_id.startswith("r-") or (game.spec.get("boards") or {}).get("after_resource")
+    if by_resource and resource_ids:
         first = resources[resource_ids[0]]
-        if boards_in_resource.get(first.content_id, 1) > 1:
+        if boards_in_resource.get(first.content_id, 1) > 1 and not board_id.startswith("r-"):
             return "%s (%s)" % (first.title, board_id)
         return first.title
     return board_id
 
 
 def public_spec(spec):
-    return {
-        "board_label": spec["board_label"],
-        "rank_by": spec["rank_by"],
-        "fields": [
-            {k: f[k] for k in ("key", "label", "unit", "order", "decimals", "seconds", "combine")} for f in spec["fields"]
-        ],
-    }
+    out = scoring.public(spec)
+    out["board_label"] = (spec.get("boards") or {}).get("label") or "Game"
+    return out
+
+
+def _panel(board_id, name, spec, ranked_results, viewer_id, visibility, extra=None):
+    rows = ranking.rows(spec, ranked_results, viewer_id, visibility, limit=10000)
+    for r in rows:
+        r.pop("attempt_id", None)
+    panel = {"id": board_id, "name": name, "players": len(ranked_results), "rows": rows,
+             "mine": next((r for r in rows if r["me"]), None)}
+    panel.update(extra or {})
+    return panel
 
 
 def scoreboards(game, saves, viewer_id, visibility="names"):
@@ -309,35 +307,20 @@ def scoreboards(game, saves, viewer_id, visibility="names"):
     for board in boards.values():
         for cid in board["resources"]:
             boards_in_resource[cid] = boards_in_resource.get(cid, 0) + 1
-    out = []
+    out, results_by_board = [], {}
     for board_id, board in boards.items():
-        results = []
-        for user_id, entries in board["users"].items():
-            results.append((user_id, combine(spec, entries)))
-        results.sort(key=lambda item: (_rank_key(spec, item[1]), board["names"][item[0]].lower()))
-        rows, prev, rank = [], None, 0
-        for i, (user_id, values) in enumerate(results, start=1):
-            key = _rank_key(spec, values)
-            if key != prev:
-                rank, prev = i, key
-            me = user_id == viewer_id
-            if visibility == "hidden" and not me:
-                continue
-            name = board["names"][user_id]
-            if visibility == "initials" and not me:
-                name = ranking.initials(name)
-            rows.append({"rank": rank, "name": name, "me": me, "values": values})
-        out.append(
-            {
-                "id": board_id,
-                "name": _board_title(game, board_id, board["resources"], resources, boards_in_resource),
-                "players": len(results),
-                "resources": [resources[cid].public() for cid in board["resources"]],
-                "rows": rows,
-                "mine": next((r for r in rows if r["me"]), None),
-            }
-        )
+        results = [ranking.Result(user_id, board["names"][user_id], combine(spec, entries))
+                   for user_id, entries in board["users"].items()]
+        results_by_board[board_id] = results
+        out.append(_panel(board_id, _board_title(game, board_id, board["resources"], resources, boards_in_resource),
+                          spec, ranking.rank(spec, results), viewer_id, visibility,
+                          {"resources": [resources[cid].public() for cid in board["resources"]]}))
     out.sort(key=lambda b: natural_key(b["name"]))
+    total = scoring.total_spec(spec)
+    if total and out:
+        out.insert(0, _panel(scoring.TOTAL_BOARD, scoring.board_name(spec, scoring.TOTAL_BOARD), total,
+                             ranking.totals(results_by_board, total), viewer_id, visibility,
+                             {"resources": [], "total": True, "spec": public_spec(total)}))
     return {
         "spec": public_spec(spec),
         "visibility": visibility,

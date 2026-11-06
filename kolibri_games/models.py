@@ -82,6 +82,7 @@ class Attempt(models.Model):
     user_id = models.CharField(max_length=32)
     user_name = models.CharField(max_length=255)
     challenge_id = models.IntegerField(null=True, blank=True)
+    board = models.CharField(max_length=100, blank=True, default="")  # the level, for games with levels
     number = models.PositiveIntegerField()
     status = models.CharField(max_length=12, default="started")
     voided = models.BooleanField(default=False)
@@ -93,6 +94,7 @@ class Attempt(models.Model):
     state_json = models.TextField(default="{}")  # kept by the server (e.g. a Wiki BLAZE chain)
     events_json = models.TextField(default="[]")  # every move, for coaches
     detail_json = models.TextField(default="{}")
+    values_json = models.TextField(default="{}")  # every score the game reported, by field (see scoring.py)
 
     class Meta:
         indexes = [
@@ -103,6 +105,7 @@ class Attempt(models.Model):
     state = _json_property("state_json")
     events = _json_property("events_json")
     detail = _json_property("detail_json")
+    values = _json_property("values_json")
 
 
 class PlayerState(models.Model):

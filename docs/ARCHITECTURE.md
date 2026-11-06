@@ -31,13 +31,24 @@ The manifest's `type` says which kind a game is (`manifest.py`, [GAME_FORMAT.md]
 - **Server Games** (`"server"`) need one of the plugin's services (`wikipedia-race`,
   `photo-guess`), because the server runs the rules and keeps the answers.
 
-Any kind can be installed by a device administrator (Setup page, `install.py`) and played on the
-games page, in free play or (with a score) in a coach's challenge. Saved and Scored Games can also
-be HTML5 apps in Kolibri channels, played in Learn, and outside Kolibri altogether (they're made
-with [EduGame Kit](https://github.com/togetherings/edugame-kit)). For Scored Games in channels,
-the plugin only reads the scores they save, to show scoreboards (`channel.py`,
-[CHANNEL_GAMES.md](CHANNEL_GAMES.md)). Saved Games in channels are left alone, and Server Games
-in channels are reported as a problem.
+Saved and Scored Games are made with [EduGame Kit](https://github.com/togetherings/edugame-kit)
+and reach learners through Kolibri Studio, as HTML5 apps in channels, played in Learn (and
+outside Kolibri altogether). For Scored Games in channels, the plugin only reads the scores they
+save, to show scoreboards (`channel.py`, [CHANNEL_GAMES.md](CHANNEL_GAMES.md)). Saved Games in
+channels are left alone, and Server Games in channels are reported as a problem.
+
+Server Games can't go through Studio, so a device administrator installs them (Setup page,
+`install.py`) and they're played on the games page, in free play or in a coach's challenge. The
+games page can install the other kinds too, for trying them out.
+
+## Scores
+
+`scoring.py` reads a game's `scoring` section into one full form, used everywhere: a list of
+fields (each with its own order, how it adds up, and where it comes from), `rank_by` (the first
+field ranks, the next ones break ties), which attempt counts, and boards (levels with their own
+scoreboards, and a total scoreboard). `ranking.py` ranks results with it, for attempts on the
+games page and for saved data in channels alike. Attempts keep every value the game reported
+(`values_json`) and the board they were played on. See [SCORING.md](SCORING.md).
 
 ## Trust boundaries
 
