@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Games on the games page are told Kolibri's interface language (`language` in `KG.ready()`), so
+  they can start in it. EduGame Kit games use it unless the learner chose a language.
 - **Three kinds of game,** set by `type` in `kolibri-game.json` (now required): **Saved Games**
   (`"saved"`) keep each learner's progress; **Scored Games** (`"scored"`) also keep a score, for
   scoreboards and challenges; **Server Games** (`"server"`) use one of the plugin's services, like

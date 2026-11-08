@@ -438,7 +438,9 @@
     stopPlay();
     var frameWrap = el("div", { class: "loading", text: "Opening the game…" });
     setView([frameWrap], { playing: true });
-    Promise.all([loadGames(), api(gamePath(key, q({ challenge: challengeId })))]).then(function (res) {
+    // ?lang= is only for the preview server, which pretends to be Kolibri in that language.
+    var lang = (/[?&]lang=([A-Za-z-]+)/.exec(location.search) || [])[1];
+    Promise.all([loadGames(), api(gamePath(key, q({ challenge: challengeId, lang: lang })))]).then(function (res) {
       var session = res[1];
       var play = {
         key: key,
@@ -533,6 +535,7 @@
       return {
         game: s.game,
         player: s.player,
+        language: s.language,   // Kolibri's interface language
         platform: s.platform,
         settings: s.settings,
         rules: s.rules,

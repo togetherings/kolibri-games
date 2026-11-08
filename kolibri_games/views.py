@@ -19,6 +19,7 @@ from django.core import signing
 from django.http import HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.clickjacking import xframe_options_sameorigin
+from django.utils.translation import get_language
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from . import API_VERSION, __version__, install, registry
@@ -303,7 +304,8 @@ def icon(request, player, key):
 @api
 def game_session(request, player, key):
     game = _game(key)
-    payload = session(service, game, player, _challenge_id(request.GET.get("challenge")))
+    # Kolibri's interface language (its pages live under /<language>/), for the game to start in.
+    payload = session(service, game, player, _challenge_id(request.GET.get("challenge")), language=get_language())
     payload["play_url"] = "play/%s/" % play_token(game, player)
     return JsonResponse(payload)
 
