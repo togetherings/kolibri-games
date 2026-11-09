@@ -146,6 +146,7 @@ const KG = window.KolibriGames;
 const info = await KG.ready();
 // info.player     {name, role: "learner" | "coach" | "admin"}
 // info.settings   the settings for this play (free play, or the challenge's), defaults filled in
+// info.language   Kolibri's interface language, like "fr" (start in it unless the learner chose another)
 // info.rules      {counts: "first"|"best"|"latest"|"total", scoreboard, time_limit: seconds or null}
 // info.challenge  {title, class_name, opens_at, closes_at, ...} or null in free play
 // info.summary    {attempts, counted, first_used}

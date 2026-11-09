@@ -319,7 +319,8 @@ class Handler(BaseHTTPRequestHandler):
         cid = challenge_id(query.get("challenge"))
         if rest == "" and get:
             game = self.game(key)
-            payload = views_common.session(service, game, player, cid)
+            # ?lang=fr on the preview page pretends Kolibri is in French.
+            payload = views_common.session(service, game, player, cid, language=query.get("lang") or "en")
             payload["play_url"] = "play/%s/" % sign({"k": game.key, "u": player.id})
             return self.json(200, payload)
         if rest == "/icon":

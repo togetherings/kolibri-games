@@ -7,7 +7,8 @@
  *
  * Every call returns a Promise. See docs/GAME_FORMAT.md for details.
  *
- *   KolibriGames.ready()                -> {game, player, settings, rules, challenge, summary, preview}
+ *   KolibriGames.ready()                -> {game, player, language, settings, rules, challenge, summary, preview}
+ *                                          (language: Kolibri's interface language, like "fr")
  *   KolibriGames.start({resume: true, board: "level-2"})
  *                                       -> {attempt, public, resumed, time_limit, elapsed}
  *   KolibriGames.move(type, data)       -> {} (or, for Wiki BLAZE, the next page)
@@ -124,6 +125,7 @@
           return {
             game: { id: m.id, title: m.title, version: m.version, scoring: m.scoring || null, service: m.service || null },
             player: { name: "Preview player", role: "learner" },
+            language: (navigator.language || "en").toLowerCase(),
             platform: { version: "preview", api: API },
             settings: settingsOf(m),
             rules: { counts: (m.scoring && m.scoring.counts) || "first", scoreboard: "names", time_limit: null },

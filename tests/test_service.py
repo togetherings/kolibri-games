@@ -364,3 +364,12 @@ def test_which_attempt_counts_can_be_latest_or_every_attempt_added_up(setup):
     for counts, expected in (("first", 20), ("best", 12), ("latest", 30), ("total", 62)):
         service.save_settings(game, FAC, {"counts": counts}, {}, coach.id)
         assert service.scoreboard(game, amina)["rows"][0]["score"] == expected, counts
+
+
+def test_games_are_told_kolibris_language(setup):
+    from kolibri_games.views_common import session
+
+    service, clock, amina, ben, cara, coach = setup
+    game = folder_game("memory-match")
+    assert session(service, game, amina, language="fr")["language"] == "fr"
+    assert session(service, game, amina)["language"] == "en"

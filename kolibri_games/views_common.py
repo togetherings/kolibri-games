@@ -58,12 +58,18 @@ def card(service, game, player):
     return data
 
 
-def session(service, game, player, challenge_id=None):
-    """Everything the page needs to open a game (the caller adds play_url)."""
+def session(service, game, player, challenge_id=None, language=None):
+    """Everything the page needs to open a game (the caller adds play_url).
+
+    ``language`` is Kolibri's interface language for this page (like "fr" or
+    "pt-br"), so games can start in it. Games keep the learner's own choice
+    if they've made one.
+    """
     ctx = service.context(game, player, challenge_id)
     return {
         "game": dict(game.manifest.to_public(), key=game.key, origin=game.origin),
         "player": {"name": player.name, "role": player.role},
+        "language": language or "en",
         "platform": {"version": __version__, "api": API_VERSION},
         "settings": ctx.settings,
         "rules": {
