@@ -132,9 +132,14 @@ def main():
             if shots:
                 frame.locator("#guess").fill("50")
                 frame.locator("#btn-guess").click()
-                frame.locator("#history li").first.wait_for()
+                # "attached": when 50 is the secret number (1 time in 100), the round ends at once
+                # and the list of guesses is hidden with the playing area.
+                frame.locator("#history li").first.wait_for(state="attached")
                 page.screenshot(path=os.path.join(shots, "2-number-hunt.png"))
-            guesses = binary_search(frame)
+            if frame.locator("#history li.correct").count():
+                guesses = 1
+            else:
+                guesses = binary_search(frame)
             frame.locator("#done:not([hidden])").wait_for()
             summary = frame.locator("#done-summary").inner_text()
             assert "guess" in summary, summary
