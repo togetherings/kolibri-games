@@ -1,7 +1,8 @@
 # Notes for working on this repository
 
 - Python package: `kolibri_games/`. Kolibri plugin name: `kolibri_games`.
-- Keep `service.py`, `ranking.py`, `channel.py`, `wiki.py`, `wikirace.py`, `photos.py`, `photoguess.py`, `install.py`, `manifest.py`,
+- Keep `service.py`, `ranking.py`, `channel.py`, `wiki.py`, `wikirace.py`, `photos.py`, `photoguess.py`,
+  `smokesignals.py`, `smokerooms.py`, `install.py`, `manifest.py`,
   `registry.py`, `sources.py`, `views_common.py` free of Django imports; Django code lives in `models.py`, `store_django.py`,
   `views.py`, `urls.py`, `management/`.
 - `devserver.py` mirrors the API in `views.py` with the memory store. Change both together.
@@ -21,8 +22,11 @@
   lists in field order, "_" keys for its own save: change both repos together.
 - Never send scores to Kolibri itself (SCORM score.raw is read as completion); games set `passed`.
 - Games we keep working: LIT, SINGE (channels, their own save formats; examples/channel-games),
-  Sparkle (games page, scoring short form, counts "best" on a running total), BeaconHunt and Wiki
-  BLAZE (Server Games). BoBo Na Mi will be a Saved Game.
+  Sparkle (games page, scoring short form, counts "best" on a running total), BeaconHunt, Wiki
+  BLAZE and Smoke Signals (Server Games). BoBo Na Mi will be a Saved Game.
+- A Server Game's page lives here (`games/<game>/`) when it shares only its service with the
+  plugin (Wiki BLAZE, Smoke Signals); it gets its own repository when it has its own tools,
+  content or licensing (BeaconHunt).
 - Writing style for anything users see: plain words, sentence case, active voice.
 - BeaconHunt (github.com/togetherings/beacon-hunt) uses the photo-guess service; the photo-pack
   format in docs/PHOTO_PACKS.md is shared with its pack tool, so change both together.

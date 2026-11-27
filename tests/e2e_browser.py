@@ -31,6 +31,7 @@ def serve(port):
 
 
 BLAZE = "g-org.togetherings.wiki-blaze"
+SMOKE = "g-org.togetherings.smoke-signals"
 
 
 def make_update_zip():
@@ -91,6 +92,93 @@ def solve_memory(page, frame):
             page.wait_for_timeout(60)
 
 
+def smoke_signals(browser, base, shots):
+    """Three players, each in their own browser, play a whole game of Smoke Signals."""
+    names = ["amina", "ben", "coach"]
+    pages, frames = [], []
+    for name in names:
+        context = browser.new_context(viewport={"width": 1000, "height": 900}, accept_downloads=True)
+        page = context.new_page()
+        page.on("pageerror", lambda e: (_ for _ in ()).throw(AssertionError("page error: %s" % e)))
+        page.goto(base + "?as=" + name + "#/")
+        card = page.locator(".game", has_text="Smoke Signals")
+        card.wait_for()
+        text = card.inner_text()
+        assert "Play" in text and "Free play" not in text and "Challenges" not in text, text  # no scores
+        page.goto(base + "#/play/" + SMOKE)
+        frame = page.frame_locator("iframe.game-frame")
+        frame.locator("#lobby:not([hidden])").wait_for()
+        pages.append(page)
+        frames.append(frame)
+    host = frames[0]
+    host.locator("#new-speed").select_option("none")
+    host.locator("#new-rounds").select_option("1")
+    host.locator("#btn-create").click()
+    host.locator("#waiting-room:not([hidden])").wait_for()
+    code = host.locator("#room-code").inner_text()
+    assert len(code) == 4, code
+    # Ben joins from the list of waiting games; the coach types the code.
+    frames[1].locator("button.room:has-text('%s')" % code).wait_for(timeout=10000)
+    frames[1].locator("button.room:has-text('%s')" % code).click()
+    frames[2].locator("#join-code").fill(code.lower())
+    frames[2].locator("#btn-join").click()
+    for f in frames[1:]:
+        f.locator("#waiting-room:not([hidden])").wait_for()
+    host.locator("#room-players li").nth(2).wait_for(timeout=10000)
+    assert frames[1].locator("#btn-begin").is_hidden()  # only the host starts
+    if shots:
+        pages[0].screenshot(path=os.path.join(shots, "10-smoke-waiting-room.png"), full_page=True)
+    host.locator("#btn-begin").click()
+
+    prompts = ["a cat on a bike", "a rocket", "a lighthouse"]
+    for f, text in zip(frames, prompts):
+        f.locator("#prompt:not([hidden])").wait_for(timeout=10000)
+        assert f.locator("#ideas .idea").count() == 3
+        f.locator("#prompt-text").fill(text)
+        f.locator("#btn-prompt").click()
+    # 3 players: each draws the prompt of the player before them.
+    for i, (page, f) in enumerate(zip(pages, frames)):
+        f.locator("#draw:not([hidden])").wait_for(timeout=10000)
+        assert f.locator("#draw-what").inner_text() == prompts[i - 1], f.locator("#draw-what").inner_text()
+        box = page.frame_locator("iframe.game-frame").locator("#canvas").bounding_box()
+        page.mouse.move(box["x"] + 60, box["y"] + 60)
+        page.mouse.down()
+        for k in range(12):
+            page.mouse.move(box["x"] + 60 + k * 25, box["y"] + 60 + (k % 3) * 30, steps=2)
+        page.mouse.up()
+        if i == 0 and shots:
+            page.screenshot(path=os.path.join(shots, "11-smoke-drawing.png"), full_page=True)
+        f.locator("#btn-drawn").click()
+    for i, f in enumerate(frames):
+        f.locator("#guess:not([hidden])").wait_for(timeout=10000)
+        assert f.locator("#guess-nothing").is_hidden()
+        f.locator("#guess-text").fill("guess %d" % i)
+        f.locator("#btn-guess").click()
+    for f in frames:
+        f.locator("#reveal:not([hidden])").wait_for(timeout=10000)
+    ben = frames[1]
+    ben.locator("#chain-entries li").first.wait_for()
+    assert "Your chain" in ben.locator(".chain-button.current").inner_text()
+    ben.locator("#btn-all").click()
+    entries = ben.locator("#chain-entries li").all_inner_texts()
+    assert len(entries) == 3 and "Ben Learner wrote" in entries[0] and "a rocket" in entries[0], entries
+    assert "Ms Coach drew" in entries[1] and "Amina Learner guessed" in entries[2], entries
+    if shots:
+        pages[1].screenshot(path=os.path.join(shots, "12-smoke-chain.png"), full_page=True)
+    # The games page saves the picture for the sandboxed game.
+    with pages[1].expect_download() as download:
+        ben.locator("#btn-save").click()
+    assert download.value.suggested_filename == "smoke-signals-ben-learner.png", download.value.suggested_filename
+    if shots:
+        download.value.save_as(os.path.join(shots, "13-smoke-saved-chain.png"))
+    # Play again: back to the waiting games.
+    ben.locator("#btn-again").click()
+    ben.locator("#lobby:not([hidden])").wait_for()
+    for page in pages:
+        page.wait_for_load_state("networkidle")
+        page.context.close()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--screenshots", default=None)
@@ -115,7 +203,7 @@ def main():
             # Lobby as Amina
             page.goto(base + "?as=amina")
             page.locator(".game").first.wait_for()
-            assert page.locator("#games-here .game").count() == 4, "expected four games on the games page"
+            assert page.locator("#games-here .game").count() == 5, "expected five games on the games page"
             assert page.locator("#games-in-learn .game").count() == 2, "expected two Scored Games in Learn"
             sections = page.locator(".shelf-section .shelf-title").all_inner_texts()
             assert sections == ["Play here", "Scored Games in Learn"], sections
@@ -321,6 +409,8 @@ def main():
             assert "Maps played" in heads and "Accuracy" in heads, heads
             if shots:
                 page.screenshot(path=os.path.join(shots, "9-channel-scoreboards.png"), full_page=True)
+
+            smoke_signals(browser, base, shots)
 
             # Phone width and dark mode
             phone = browser.new_page(viewport={"width": 390, "height": 800}, is_mobile=True, color_scheme="dark")

@@ -189,6 +189,59 @@ check(status == 200 and reopened["state"] == "open", "coach reopened it")
 status, _ = jpost(c, base + "api/games/%s/challenges/%d/delete" % (MM, cid))
 check(status == 200 and not Challenge.objects.filter(id=cid).exists(), "coach deleted the challenge")
 
+# ------------------------------------------------------- Smoke Signals (rooms kept in Kolibri's database)
+
+SMOKE = "g-org.togetherings.smoke-signals"
+try:
+    from kolibri_games.models import Room, RoomEntry
+
+    seats = []
+    for user in (amina, ben, cara):
+        cl = Client()
+        cl.force_login(user)
+        status, started = jpost(cl, base + "api/games/%s/attempts" % SMOKE, {"resume": False})
+        check(status == 201 and started["public"]["room"] is None, "Smoke Signals opens on the list of games (%s)" % status)
+        seats.append((cl, started["attempt"]["id"]))
+
+    def smoke(i, kind, data=None):
+        cl, aid = seats[i]
+        return jpost(cl, base + "api/games/%s/attempts/%d/moves" % (SMOKE, aid), {"type": kind, "data": data or {}})
+
+    status, view = smoke(0, "create", {"speed": "none", "rounds": 1})
+    code = view["room"]["code"]
+    check(status == 200 and Room.objects.filter(code=code, status="lobby").exists(), "a host started a waiting room")
+    for i in (1, 2):
+        status, view = smoke(i, "join", {"code": code})
+    check(len(view["room"]["players"]) == 3, "two more players joined")
+    status, view = smoke(0, "begin")
+    check(status == 200 and view["room"]["status"] == "playing", "the host started the game")
+    # A big drawing (near the limit) goes through Kolibri's request handling.
+    big = {"strokes": [[k % 8, 1] + sum(([(j * 20) % 800, (j * 15 + k) % 600] for j in range(40)), [])
+                       for k in range(140)]}
+    for step in range(3):
+        for i in range(3):
+            status, view = smoke(i, "poll")
+            task = view["task"]
+            data = {"step": step, "drawing": big} if task["kind"] == "draw" else {"step": step, "text": "idea %d" % i}
+            status, view = smoke(i, "submit", data)
+            check(status == 200, "player %d handed in step %d (%s %s)" % (i, step, status, view if status != 200 else ""))
+    check(view["room"]["status"] == "done", "every chain went round")
+    room = Room.objects.get(code=code, status="done")
+    check(RoomEntry.objects.filter(room=room).count() == 9, "nine hand-ins were kept")
+    status, chain = smoke(1, "chain", {"index": 1})
+    check(status == 200 and [e["kind"] for e in chain["entries"]] == ["prompt", "draw", "guess"]
+          and len(chain["entries"][1]["strokes"]) == 140, "a whole chain comes back with its drawing")
+    status, view = smoke(1, "submit", {"step": 2, "text": "again"})
+    check(status == 409, "nothing can be handed in after the end (%s)" % status)
+    cl, aid = seats[1]
+    status, done = jpost(cl, base + "api/games/%s/attempts/%d/finish" % (SMOKE, aid), {})
+    check(status == 200 and done["attempt"]["detail"]["chain"][0] == "idea 1", "finishing keeps the player's chain")
+except Exception as e:  # noqa: BLE001
+    import traceback
+
+    traceback.print_exc()
+    check(False, "Smoke Signals test crashed: %r" % e)
+
 # ------------------------------------------------------- installing games
 
 if admin is not None:

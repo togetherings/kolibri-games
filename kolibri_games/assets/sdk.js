@@ -18,6 +18,8 @@
  *   KolibriGames.scoreboard({board})    -> {rows, boards, board, spec, visibility, counts}
  *   KolibriGames.myResults()            -> {attempts}
  *   KolibriGames.getState() / setState(data)   saved data for this player (max 64 KB)
+ *   KolibriGames.saveFile(name, blob)   let the player save a picture or text file the game made
+ *                                       (PNG, JPEG or plain text, at most 20 MB)
  *   KolibriGames.exit()                 go back to the games list
  *   KolibriGames.on("timeup", fn)       events from the platform
  *
@@ -171,9 +173,22 @@
       },
       "state.get": function () { return getManifest().then(function (m) { return load(m.id + ":state", null); }); },
       "state.set": function (p) { return getManifest().then(function (m) { save(m.id + ":state", p.data); return { ok: true }; }); },
+      "file.save": function (p) { downloadBlob(p.name, p.blob); return Promise.resolve({ ok: true }); },
       exit: function () { return Promise.resolve({ ok: true }); }
     };
   })();
+
+  // In preview mode the page isn't sandboxed, so it can save files itself.
+  function downloadBlob(name, blob) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+  }
 
   function request(method, params) {
     if (embedded) return send(method, params);
@@ -205,6 +220,10 @@
     myResults: function () { return request("results.mine"); },
     getState: function () { return request("state.get"); },
     setState: function (data) { return request("state.set", { data: data }); },
+    saveFile: function (name, blob) {
+      if (!(blob instanceof Blob)) return Promise.reject(makeError("bad_file", "saveFile needs a Blob."));
+      return request("file.save", { name: String(name || "file"), blob: blob });
+    },
     exit: function () { return request("exit"); },
     on: function (name, fn) { (handlers[name] = handlers[name] || []).push(fn); }
   };

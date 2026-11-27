@@ -401,12 +401,12 @@
     }
     var actions = [];
     if (!unplayable) {
-      actions.push(el("a", { class: "button primary", href: "#/play/" + g.key, text: g.type === "saved" ? "Play" : "Free play" }));
+      actions.push(el("a", { class: "button primary", href: "#/play/" + g.key, text: g.type === "saved" || !g.scoring ? "Play" : "Free play" }));
       if (freeBoard) actions.push(el("a", { class: "button quiet", href: "#/board/" + g.key, text: "Scoreboard" }));
     }
     if (isCoach() && g.id && !unplayable) {
-      // Saved Games have no score, so no challenges or results.
-      if (g.type !== "saved") actions.push(el("a", { class: "button quiet", href: "#/challenges/" + g.key, text: "Challenges" }));
+      // Games without scores (Saved Games, Smoke Signals) have no challenges or results.
+      if (g.scoring) actions.push(el("a", { class: "button quiet", href: "#/challenges/" + g.key, text: "Challenges" }));
       if (g.scoring) actions.push(el("a", { class: "button quiet", href: "#/results/" + g.key, text: "Results" }));
       actions.push(el("a", { class: "button quiet", href: "#/settings/" + g.key, text: "Settings" }));
     }
@@ -578,6 +578,26 @@
     "results.mine": function (play) { return api(gamePath(play.key, "/mine" + q({ challenge: play.challengeId }))); },
     "state.get": function (play) { return api(gamePath(play.key, "/state")).then(function (d) { return d.data; }); },
     "state.set": function (play, params) { return api(gamePath(play.key, "/state"), { body: { data: params.data } }); },
+    // Games are sandboxed without downloads, so the page saves files for them: only pictures and
+    // plain text, with a tidy file name.
+    "file.save": function (play, params) {
+      var blob = params.blob;
+      var types = { "image/png": ".png", "image/jpeg": ".jpg", "text/plain": ".txt" };
+      if (!(blob instanceof Blob) || !types[blob.type] || blob.size > 20 * 1024 * 1024) {
+        var err = new Error("Games can only save pictures (PNG or JPEG) and text files, up to 20 MB.");
+        err.code = "bad_file";
+        throw err;
+      }
+      var base = String(params.name || "").replace(/\.[A-Za-z0-9]{1,5}$/, "").replace(/[^A-Za-z0-9 ._-]+/g, "-")
+        .replace(/^[-. ]+/, "").slice(0, 80) || "game";
+      var url = URL.createObjectURL(blob);
+      var a = el("a", { href: url, download: base + types[blob.type] });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+      return { ok: true };
+    },
     exit: function () { setTimeout(function () { location.hash = "#/"; }, 0); return { ok: true }; }
   };
 

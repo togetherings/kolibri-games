@@ -29,7 +29,8 @@ The manifest's `type` says which kind a game is (`manifest.py`, [GAME_FORMAT.md]
 - **Saved Games** (`"saved"`) keep each learner's progress.
 - **Scored Games** (`"scored"`) also report a score.
 - **Server Games** (`"server"`) need one of the plugin's services (`wikipedia-race`,
-  `photo-guess`), because the server runs the rules and keeps the answers.
+  `photo-guess`, `smoke-signals`), because the server runs the rules, keeps the answers or brings
+  players together.
 
 Saved and Scored Games are made with [EduGame Kit](https://github.com/togetherings/edugame-kit)
 and reach learners through Kolibri Studio, as HTML5 apps in channels, played in Learn (and
@@ -83,6 +84,8 @@ don't depend on Kolibri's internal migration history.
 | `GameSettings` | Free-play settings per game per facility: platform rules and the game's own options. |
 | `ArticleList` | A coach's list of Wikipedia articles for Wiki BLAZE, per facility. |
 | `PlayerState` | Up to 64 KB of saved data per game per learner. |
+| `Room` | A Smoke Signals game: its code, host, players, settings, which step it's on and when that step's time runs out. A version number stops two players' changes overwriting each other. Deleted (with its entries) 7 days after its last change. |
+| `RoomEntry` | One prompt, drawing or guess in a room, for one chain and step (only one each). |
 
 Games in channels add no tables. Their scores are read when needed from Kolibri's own
 `ContentSummaryLog.extra_fields["contentState"]["SCORM"]`, where Kolibri keeps what an HTML5 app
@@ -128,10 +131,18 @@ rules: it picks places spread over countries, serves one round's photo at a time
 `__photos__/<attempt>/<round>` address, and scores country guesses by distance. The places stay on
 the server.
 
+## Smoke Signals
+
+`smokesignals.py` holds the rules: whose turn it is at each step, checking prompts, guesses and
+drawings, and what to hand in for a player who runs out of time. `smokerooms.py` keeps rooms in
+the store: joining, starting, handing in, and moving the game on when everyone has handed in or
+the time has run out. Games ask for news every two seconds through ordinary moves, so there's no
+background work and no new address. See [SMOKE_SIGNALS.md](SMOKE_SIGNALS.md).
+
 ## Shared code
 
 `service.py`, `ranking.py`, `channel.py`, `wiki.py`, `wikirace.py`, `photos.py`, `photoguess.py`,
-`install.py`, `manifest.py`, `registry.py`, `sources.py` and `views_common.py` don't import Django, so the same rules run in
+`smokesignals.py`, `smokerooms.py`, `install.py`, `manifest.py`, `registry.py`, `sources.py` and `views_common.py` don't import Django, so the same rules run in
 Kolibri (`store_django.py` + `views.py`), in the unit tests and in the preview server
 (`devserver.py`, memory store).
 

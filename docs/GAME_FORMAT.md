@@ -14,9 +14,10 @@ on the Kolibri Games scoreboards, in Moodle and other learning systems, RACHEL, 
 Kiwix, and adds the right `kolibri-game.json` for you. See [CHANNEL_GAMES.md](CHANNEL_GAMES.md).
 
 **This page is about Server Games:** games that need the plugin's server, so they can't go through
-Studio. Wiki BLAZE uses the `wikipedia-race` service ([WIKI_BLAZE.md](WIKI_BLAZE.md)) and
-BeaconHunt uses `photo-guess` ([PHOTO_PACKS.md](PHOTO_PACKS.md)). The server keeps what the learner
-mustn't see, like the answers, and works out the score. A device administrator installs them on
+Studio. Wiki BLAZE uses the `wikipedia-race` service ([WIKI_BLAZE.md](WIKI_BLAZE.md)),
+BeaconHunt uses `photo-guess` ([PHOTO_PACKS.md](PHOTO_PACKS.md)) and Smoke Signals uses
+`smoke-signals` ([SMOKE_SIGNALS.md](SMOKE_SIGNALS.md)). The server keeps what the learner
+mustn't see, like the answers, works out the score, or brings several players together. A device administrator installs them on
 the games page. (The games page can install the other kinds too, which is handy for trying a game,
 but Studio is how they're meant to reach learners.)
 
@@ -98,7 +99,8 @@ page's **Setup** page.
 | `scoring` | Scored and Server Games | What the scores are called and how they're ranked: one score (`label`, `order`, `tiebreak`, `min`, `max`), or several `fields` with `rank_by`, and levels with their own scoreboards (`boards`). `counts` is the default for which attempt counts: `first` (later attempts are practice), `best`, `latest` or `total` (every attempt added up); coaches can change it. `free_play_scoreboard: false` hides the free-play scoreboard, for games whose free-play rounds can't be compared (scores are then only ranked in challenges). See [SCORING.md](SCORING.md). Saved Games have none. |
 | `settings` | no | Options coaches can change on the games page, for free play and for each challenge (games in channels don't have them). Types: `integer`, `number` (with optional `min`, `max`), `boolean`, `choice` (with `choices`), `text`. Each needs `key`, `label` and `default`, and can have a `help` line. |
 | `data` | Server Games | Large data the game needs from the device, by name: `wikipedia` (a Wikipedia .zim file) or `photo-packs` (a folder of photo packs), chosen by an administrator on the Setup page. |
-| `service` | Server Games | A server feature built into Kolibri Games: `"wikipedia-race"` (see [WIKI_BLAZE.md](WIKI_BLAZE.md)) or `"photo-guess"` (see [PHOTO_PACKS.md](PHOTO_PACKS.md)). |
+| `service` | Server Games | A server feature built into Kolibri Games: `"wikipedia-race"` (see [WIKI_BLAZE.md](WIKI_BLAZE.md)), `"photo-guess"` (see [PHOTO_PACKS.md](PHOTO_PACKS.md)) or `"smoke-signals"` (see [SMOKE_SIGNALS.md](SMOKE_SIGNALS.md)). |
+| `words` | Games that use `smoke-signals` | A word list for each language, like `{"en": "words/en.txt"}`: ideas for first prompts, one per line. |
 
 Every game also gets these coach settings from the platform: a time limit and, for games with a
 score, which attempt counts and what learners see on the scoreboard (names, initials only, or
@@ -168,6 +170,7 @@ await KG.myResults();            // {attempts: [...]}
 await KG.getState();             // saved data for this player, or null
 await KG.setState({ level: 3 }); // up to 64 KB of JSON
 KG.on("timeup", () => { ... });  // the time limit ran out, or the challenge closed
+KG.saveFile("my-picture.png", blob);  // let the player save a picture (PNG or JPEG) or a text file
 KG.exit();                       // back to the games list
 ```
 
@@ -179,6 +182,9 @@ Notes:
   recorded as left unfinished). Number Hunt does this, because its secret number lives only in
   the page.
 - Each attempt can record up to 2000 moves of up to 4 KB each.
+- Games run in a sandbox that can't download files, so `saveFile` asks the games page to save it
+  for the player: PNG, JPEG or plain text, up to 20 MB. The games page tidies the file name and
+  sets its ending from the file's type.
 - With `counts: "first"`, an attempt the player leaves unfinished still uses up their counted
   attempt. Coaches can reset a learner if that happens by accident.
 

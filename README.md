@@ -9,7 +9,7 @@ offline learning games, built with [Internet-in-a-Box](https://internet-in-a-box
   - *Saved Games* keep each learner's progress.
   - *Scored Games* also keep scores: one score, or several (like accuracy and speed), with a
     scoreboard for each level or lesson and one for the whole game.
-  - *Server Games*, like Wiki BLAZE and BeaconHunt, need this plugin's server to run their rules.
+  - *Server Games*, like Wiki BLAZE, BeaconHunt and Smoke Signals, need this plugin's server to run their rules.
 - **Saved and Scored Games are added through Kolibri Studio**, as ordinary HTML5 apps in a
   channel. Learners open them from Learn (also offline in the Kolibri app), coaches assign them
   in lessons, and the games page shows Scored Games' scoreboards from the scores they save. Make
@@ -29,6 +29,7 @@ offline learning games, built with [Internet-in-a-Box](https://internet-in-a-box
 |---|---|---|---|
 | **Wiki BLAZE** (Browsing Links A-to-Z Exploration) | Server Game | Race from one Wikipedia article to another by following links, using the Wikipedia file already on the device. See [docs/WIKI_BLAZE.md](docs/WIKI_BLAZE.md). | Attached to each [release](https://github.com/togetherings/kolibri-games/releases) here |
 | **[BeaconHunt](https://github.com/togetherings/beacon-hunt)** | Server Game | Guess where in the world a street photo was taken. | Its releases |
+| **Smoke Signals** (Sketches Morph Oddly, Kindling Excitement) | Server Game | A drawing and guessing game for a group: write something, the next player draws it, the next guesses the drawing, and so on. See [docs/SMOKE_SIGNALS.md](docs/SMOKE_SIGNALS.md). | Attached to each [release](https://github.com/togetherings/kolibri-games/releases) here |
 | **[Lessons In Typing](https://github.com/togetherings/lit)** (LIT) | Scored Game | Touch-typing lessons in several languages and keyboard layouts, scored by accuracy and speed. | Its releases, through Kolibri Studio |
 | **[Studies In Geography](https://github.com/togetherings/singe)** (SINGE) | Scored Game | Find regions, capitals and flags on maps. | Its releases, through Kolibri Studio |
 | **[Sparkle](https://github.com/togetherings/sparkle)** | Scored Game | Guess the hidden word from letter clues: a new word every day, plus practice words. | Its releases |
@@ -140,7 +141,7 @@ Kolibri, and the installer on an IIAB-like system for every pull request.
    choose **Create new tag on publish** with target `main`, give it a title and click
    **Publish release**.
 3. GitHub Actions then runs the tests and attaches the plugin, the offline bundle, the Wiki BLAZE
-   zip and checksums to the release (a few minutes). If the release notes are empty, they're filled in
+   and Smoke Signals zips and checksums to the release (a few minutes). If the release notes are empty, they're filled in
    from the changelog.
 
 ## License
