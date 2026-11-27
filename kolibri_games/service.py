@@ -14,6 +14,7 @@ Words used here:
   open and close dates. Each challenge has its own scoreboard.
 * attempt: one play of one game by one learner, in free play or in a challenge.
 """
+import copy
 import json
 import threading
 from collections import OrderedDict
@@ -21,7 +22,8 @@ from datetime import datetime, timedelta, timezone
 
 import re
 
-from . import channel, photoguess, photos, ranking, scoring, wiki, wikirace
+from . import channel, photoguess, photos, ranking, scoring, smokesignals, wiki, wikirace
+from .smokerooms import SmokeRooms
 from .manifest import clean_settings, merge_settings
 
 MAX_EVENTS = 2000
@@ -166,6 +168,43 @@ class Store(object):
     def article_list_delete(self, article_list):
         raise NotImplementedError
 
+    # Smoke Signals rooms (see smokerooms.py). Room: id, game_key, facility_id,
+    # challenge_id, code, status, host_id, players (list), settings (dict),
+    # step, steps, deadline, created_at, updated_at, version. Entry: room_id,
+    # chain, step, user_id, kind, content (dict), auto, created_at.
+    def rooms(self, game_key, facility_id, challenge_id, statuses):
+        raise NotImplementedError
+
+    def room_codes(self, facility_id):
+        """Codes of the facility's rooms that are waiting or playing."""
+        raise NotImplementedError
+
+    def room_get(self, room_id):
+        raise NotImplementedError
+
+    def room_create(self, **fields):
+        raise NotImplementedError
+
+    def room_save(self, room):
+        """Save the room only if nobody saved it since it was read (same ``version``).
+        Returns True and adds 1 to the version, or False."""
+        raise NotImplementedError
+
+    def room_entries(self, room_id, chain=None, step=None):
+        raise NotImplementedError
+
+    def room_handed_in(self, room_id, step):
+        """The chains with an entry for this step (a set)."""
+        raise NotImplementedError
+
+    def room_entry_add(self, **fields):
+        """Add a hand-in. Returns False if the chain already has one for this step."""
+        raise NotImplementedError
+
+    def rooms_delete_before(self, when):
+        """Delete rooms (and their entries) last changed before ``when``."""
+        raise NotImplementedError
+
     # Scored Games in channels
     def channel_saves(self, content_ids, facility_id, user_id=None):
         """Saved data of game resources in channels: a list of dicts with
@@ -201,6 +240,7 @@ class GameService(object):
         # play doesn't count. Defaults to the normal clock (for tests).
         self.monotonic = monotonic or (lambda: self.now().timestamp())
         self._started = OrderedDict()  # attempt id -> monotonic time it started (this process only)
+        self.smoke = SmokeRooms(store, self.now, self.monotonic)
 
     # ======================================================== settings
 
@@ -453,6 +493,23 @@ class GameService(object):
         place = pack.places.get(place_id) if pack else None
         return pack.photo(place) if place else None
 
+    # ======================================================== Smoke Signals
+
+    def _smoke(self, game, player, ctx, kind, data, logged=False):
+        """A request to Smoke Signals' rooms (see smokerooms.py): the reply, and with ``logged``
+        (reply, what to keep in the move list or None)."""
+        try:
+            reply, keep = self.smoke.move(game, player, ctx.challenge_id, ctx.settings, kind, data)
+        except smokesignals.SmokeError as e:
+            raise PlatformError(str(e), e.code, e.status)
+        return (reply, keep) if logged else reply
+
+    def _smoke_leave(self, game, player, ctx):
+        try:
+            return self.smoke.leave_all(game, player, ctx.challenge_id)
+        except smokesignals.SmokeError:
+            return {}
+
     def suggest_articles(self, game, facility_id, text, list_value):
         source = self.wiki_source(game)
         resolved, _key = self.resolved_list(game, facility_id, list_value or "default", source)
@@ -541,6 +598,7 @@ class GameService(object):
         mine = self.store.attempts(game.key, player.facility_id, ctx.challenge_id, player.id)
         is_race = game.manifest.service == "wikipedia-race"
         is_hunt = game.manifest.service == "photo-guess"
+        is_smoke = game.manifest.service == "smoke-signals"
 
         # Pick up an unfinished attempt where the player left it (on the same board), and close older ones.
         open_attempts = sorted([a for a in mine if a.status == "started" and not a.voided
@@ -553,6 +611,8 @@ class GameService(object):
                     public = self.race(game, player.facility_id, ctx.settings).resume(a.state)
                 elif is_hunt:
                     public = self.hunt(game, ctx.settings).public(a.state, a.id)
+                elif is_smoke:
+                    public = self._smoke(game, player, ctx, "poll", {})
                 return {
                     "attempt": self._attempt_info(a, mine, ctx.counts),
                     "public": public,
@@ -592,7 +652,7 @@ class GameService(object):
             status="started",
             voided=False,
             started_at=self.now(),
-            public={} if is_race or is_hunt else public,  # rebuilt from the state when resuming
+            public={} if is_race or is_hunt or is_smoke else public,  # rebuilt from the state when resuming
             state=state,
             events=[],
             detail={},
@@ -603,6 +663,8 @@ class GameService(object):
             self._started.popitem(last=False)
         if is_hunt:
             public = hunt.public(state, attempt.id)  # photo addresses include the attempt id
+        if is_smoke:
+            public = self._smoke(game, player, ctx, "poll", {})  # the player's room, or the waiting rooms
         return {
             "attempt": self._attempt_info(attempt, mine + [attempt], ctx.counts),
             "public": public,
@@ -615,7 +677,8 @@ class GameService(object):
         """Record one move. For the Wikipedia race, the server checks it and replies with the next page."""
         if not isinstance(kind, str) or not 0 < len(kind) <= 40:
             raise PlatformError("Moves need a short name.", "bad_move")
-        if _size(data) > MAX_EVENT_BYTES:
+        smoke = game.manifest.service == "smoke-signals"
+        if _size(data) > (smokesignals.MAX_SUBMIT_BYTES if smoke else MAX_EVENT_BYTES):
             raise PlatformError("That move is too large.", "bad_move")
         attempt, ctx = self._open_attempt(game, player, attempt_id)
         events = attempt.events
@@ -636,6 +699,10 @@ class GameService(object):
                 attempt.state, reply, logged = hunt.move(attempt.state, kind, data, attempt.id)
             except photoguess.GuessError as e:
                 raise PlatformError(str(e), e.code)
+        elif smoke:
+            reply, logged = self._smoke(game, player, ctx, kind, data, logged=True)
+            if logged is None:
+                return reply  # news and ideas aren't kept: games ask for them every few seconds
         elapsed = self._elapsed(attempt)
         attempt.events = events + [{"t": round(elapsed, 1), "type": kind, "data": logged}]
         self.store.attempt_save(attempt)
@@ -658,6 +725,9 @@ class GameService(object):
                 score, detail = self.hunt(game, ctx.settings).finish(attempt.state)
             except photoguess.GuessError as e:
                 raise PlatformError(str(e), e.code)
+        elif game.manifest.service == "smoke-signals":
+            # No score: finishing leaves the room, and keeps the player's chain for coaches.
+            score, detail = None, self._smoke_leave(game, player, ctx)
         else:
             # The game reports its own scores ({"score": n} or {"values": {...}}); impossible ones are refused.
             score, detail = None, claimed.get("detail") or {}
@@ -705,6 +775,8 @@ class GameService(object):
         if attempt is None or attempt.user_id != player.id or attempt.game_key != game.key:
             raise PlatformError("That attempt doesn't exist.", "not_found", 404)
         if attempt.status == "started":
+            if game.manifest.service == "smoke-signals":
+                self._smoke_leave(game, player, self.context(game, player, attempt.challenge_id))
             self._close(attempt, "abandoned")
         return {"ok": True}
 
@@ -1185,6 +1257,8 @@ class MemoryStore(Store):
         self._saves = []
         self._challenges = []
         self._lists = []
+        self._rooms = {}
+        self._entries = []
         self._lock = threading.Lock()
 
     def settings_get(self, game_key, facility_id):
@@ -1273,6 +1347,57 @@ class MemoryStore(Store):
 
     def article_list_delete(self, article_list):
         self._lists = [x for x in self._lists if x.id != article_list.id]
+
+    # Rooms are copied in and out, like database rows, so the version check works.
+
+    def rooms(self, game_key, facility_id, challenge_id, statuses):
+        return [copy.deepcopy(r) for r in sorted(self._rooms.values(), key=lambda r: r.id)
+                if r.game_key == game_key and r.facility_id == facility_id and r.challenge_id == challenge_id
+                and r.status in statuses]
+
+    def room_codes(self, facility_id):
+        return {r.code for r in self._rooms.values() if r.facility_id == facility_id and r.status in ("lobby", "playing")}
+
+    def room_get(self, room_id):
+        r = self._rooms.get(room_id)
+        return copy.deepcopy(r) if r is not None else None
+
+    def room_create(self, **fields):
+        with self._lock:
+            r = MemoryRecord(id=max(list(self._rooms) or [0]) + 1, **fields)
+            self._rooms[r.id] = r
+        return copy.deepcopy(r)
+
+    def room_save(self, room):
+        with self._lock:
+            stored = self._rooms.get(room.id)
+            if stored is None or stored.version != room.version:
+                return False
+            room.version += 1
+            self._rooms[room.id] = copy.deepcopy(room)
+            return True
+
+    def room_entries(self, room_id, chain=None, step=None):
+        return [copy.deepcopy(e) for e in self._entries if e.room_id == room_id
+                and (chain is None or e.chain == chain) and (step is None or e.step == step)]
+
+    def room_handed_in(self, room_id, step):
+        return {e.chain for e in self._entries if e.room_id == room_id and e.step == step}
+
+    def room_entry_add(self, **fields):
+        with self._lock:
+            if any(e.room_id == fields["room_id"] and e.chain == fields["chain"] and e.step == fields["step"]
+                   for e in self._entries):
+                return False
+            self._entries.append(MemoryRecord(id=len(self._entries) + 1, **fields))
+            return True
+
+    def rooms_delete_before(self, when):
+        with self._lock:
+            old = {i for i, r in self._rooms.items() if r.updated_at < when}
+            for i in old:
+                del self._rooms[i]
+            self._entries = [e for e in self._entries if e.room_id not in old]
 
     def add_channel_save(self, player, content_id, content_state):
         """Pretend a learner played a game resource in a channel, in Learn (tests and the preview server)."""

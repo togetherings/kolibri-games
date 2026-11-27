@@ -17,7 +17,7 @@ save (see channel.py). Server Games, which can't go through Studio, are
 installed by a device administrator on the games page (see install.py).
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 #: Version of the messages between a game and the games page (see sdk.js and
 #: docs/GAME_FORMAT.md). Games and the page must use the same number.

@@ -40,7 +40,9 @@ GAME_TYPES = ("saved", "scored", "server")
 #: every link the learner follows and works out the score (see wikirace.py).
 #: "photo-guess": the server picks street photos from photo packs, keeps where
 #: they were taken hidden, and scores each guess (see photoguess.py).
-SERVICES = ("wikipedia-race", "photo-guess")
+#: "smoke-signals": players meet in rooms, then the server passes prompts,
+#: drawings and guesses round the room and keeps them (see smokesignals.py).
+SERVICES = ("wikipedia-race", "photo-guess", "smoke-signals")
 MAP_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,59}$")
 
 #: Setting types. "article" (a Wikipedia article title) and "article_list" (a
@@ -132,6 +134,7 @@ class Manifest(object):
         self.service = data.get("service")
         self.wikipedia = data.get("wikipedia") or {}
         self.photos = data.get("photos") or {}
+        self.words = data.get("words") or {}
 
     @property
     def is_server(self):
@@ -285,7 +288,7 @@ def validate(data):
     if gtype == "scored" and not data.get("scoring"):
         problems.append("Scored Games need a scoring section: what the scores are called, and whether more is better.")
     if gtype != "server":
-        for name in ("data", "wikipedia", "photos"):
+        for name in ("data", "wikipedia", "photos", "words"):
             if name in data:
                 problems.append("'%s' is only for Server Games." % name)
     if data.get("scoring") is not None:
@@ -360,6 +363,31 @@ def validate(data):
         if mode and (mode[0].get("type") != "choice" or not set(c.get("value") for c in mode[0].get("choices") or []
                                                               if isinstance(c, dict)) <= {"country", "location"}):
             problems.append("A photo-guess game's 'mode' setting must be a choice of 'country' and 'location'.")
+
+    if service == "smoke-signals":
+        words = data.get("words")
+        if not isinstance(words, dict) or not words or not all(
+            isinstance(k, str) and LANG_RE.match(k) and isinstance(v, str) and safe_relpath(v) is not None
+            for k, v in words.items()
+        ):
+            problems.append("Games that use smoke-signals need words: a word list for each language, "
+                            "like {\"en\": \"words/en.txt\"}.")
+        elif data.get("language", "en") not in words:
+            problems.append("words needs a list for the game's language (%s)." % data.get("language", "en"))
+        if data.get("scoring"):
+            problems.append("Games that use smoke-signals have no scores, so they can't have 'scoring'.")
+        types = {f.get("key"): f for f in settings if isinstance(f, dict)} if isinstance(settings, list) else {}
+        expect = {"speed": set(("quick", "normal", "relaxed", "none")), "prompts": set(("type", "list")),
+                  "hosts": set(("anyone", "coaches"))}
+        for key, values in expect.items():
+            f = types.get(key)
+            if f is not None and (f.get("type") != "choice" or not set(
+                    c.get("value") for c in f.get("choices") or [] if isinstance(c, dict)) <= values):
+                problems.append("A smoke-signals game's '%s' setting must be a choice of %s." % (key, ", ".join(sorted(values))))
+        if "rounds" in types and types["rounds"].get("type") != "integer":
+            problems.append("A smoke-signals game's 'rounds' setting must be an integer.")
+    elif "words" in data and gtype == "server":
+        problems.append("'words' is only for games that use smoke-signals.")
 
     if problems:
         raise ManifestError(problems)

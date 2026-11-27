@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smoke Signals</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Shown during a game: the room code, the step and the time left. -->
+  <header class="bar" id="bar" hidden>
+    <span class="code-chip">Game <b id="bar-code"></b></span>
+    <span class="step" id="bar-step"></span>
+    <span class="timer" id="bar-timer" hidden></span>
+  </header>
+
+  <main>
+    <p class="notice" id="notice" role="status" hidden></p>
+    <p class="notice warn" id="error" role="alert" hidden></p>
+
+    <!-- Choose a game to join, or start one. -->
+    <section id="lobby" class="screen" hidden>
+      <h1><span class="smoke">Smoke</span> Signals</h1>
+      <p class="tagline">Sketches Morph Oddly, Kindling Excitement</p>
+      <p class="lead">Write something for the next player to draw. The player after them guesses what the drawing
+        shows, the next one draws that guess, and so on. At the end, see how far each idea drifted.</p>
+      <div class="panel">
+        <h2>Join a game</h2>
+        <div class="join">
+          <label for="join-code">Game code</label>
+          <input id="join-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD">
+          <button type="button" class="go" id="btn-join">Join</button>
+        </div>
+        <ul class="rooms" id="rooms"></ul>
+      </div>
+      <div class="panel" id="host-panel">
+        <h2>Start a new game</h2>
+        <div class="options">
+          <label>Time for each turn
+            <select id="new-speed">
+              <option value="quick">Quick (60 seconds to draw)</option>
+              <option value="normal">Normal (90 seconds to draw)</option>
+              <option value="relaxed">Relaxed (2 minutes to draw)</option>
+              <option value="none">No timer</option>
+            </select>
+          </label>
+          <label>Rounds, at least
+            <select id="new-rounds">
+              <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option>
+            </select>
+          </label>
+        </div>
+        <button type="button" class="go" id="btn-create">Start a new game</button>
+      </div>
+      <p class="note" id="host-note" hidden>Your coach starts the games here. Ask them for the code.</p>
+    </section>
+
+    <!-- Waiting for players. -->
+    <section id="waiting-room" class="screen" hidden>
+      <p class="label">Game code</p>
+      <p class="big-code" id="room-code"></p>
+      <p class="lead" id="room-lead"></p>
+      <ol class="players" id="room-players"></ol>
+      <div class="actions">
+        <button type="button" class="go" id="btn-begin" hidden>Start the game</button>
+        <button type="button" id="btn-leave">Leave</button>
+      </div>
+    </section>
+
+    <!-- Writing the first prompt. -->
+    <section id="prompt" class="screen" hidden>
+      <h1>Write something to draw</h1>
+      <p class="lead" id="prompt-lead">The next player will draw it. Keep it short.</p>
+      <div class="ideas" id="ideas"></div>
+      <div class="write" id="prompt-write">
+        <input id="prompt-text" maxlength="60" autocomplete="off" placeholder="A cat riding a bicycle">
+        <button type="button" class="go" id="btn-prompt">Done</button>
+      </div>
+      <button type="button" class="quiet" id="btn-more">Other ideas</button>
+    </section>
+
+    <!-- Drawing. -->
+    <section id="draw" class="screen" hidden>
+      <h1 class="task-title">Draw: <span id="draw-what"></span></h1>
+      <p class="note">No letters or numbers: let the picture speak.</p>
+      <div class="paper"><canvas id="canvas" width="800" height="600" aria-label="Your drawing"></canvas></div>
+      <div class="tools">
+        <div class="palette" id="palette" role="radiogroup" aria-label="Colour"></div>
+        <div class="sizes" id="sizes" role="radiogroup" aria-label="Brush size"></div>
+        <button type="button" id="btn-undo">Undo</button>
+        <button type="button" id="btn-clear">Clear</button>
+        <button type="button" class="go" id="btn-drawn">Done</button>
+      </div>
+    </section>
+
+    <!-- Guessing. -->
+    <section id="guess" class="screen" hidden>
+      <h1 class="task-title">What is this?</h1>
+      <div class="paper"><canvas id="guess-canvas" width="800" height="600" aria-label="The drawing to guess"></canvas></div>
+      <p class="note" id="guess-nothing" hidden>Nobody drew this one. Make up a guess!</p>
+      <div class="write">
+        <input id="guess-text" maxlength="60" autocomplete="off" placeholder="Your guess">
+        <button type="button" class="go" id="btn-guess">Done</button>
+      </div>
+    </section>
+
+    <!-- Waiting for the others to hand in. -->
+    <section id="wait" class="screen" hidden>
+      <div class="puffs" aria-hidden="true"><i></i><i></i><i></i></div>
+      <h1>Sent!</h1>
+      <p class="lead" id="wait-lead"></p>
+      <div class="actions">
+        <button type="button" id="btn-skip" hidden>Stop waiting</button>
+      </div>
+    </section>
+
+    <!-- The end: every chain. -->
+    <section id="reveal" class="screen" hidden>
+      <h1>See how each idea drifted</h1>
+      <ul class="chain-list" id="chain-list"></ul>
+      <div id="chain-view" hidden>
+        <h2 id="chain-title"></h2>
+        <ol class="chain" id="chain-entries"></ol>
+        <div class="actions">
+          <button type="button" class="go" id="btn-next">Show the next one</button>
+          <button type="button" id="btn-all">Show everything</button>
+          <button type="button" id="btn-save" hidden>Save as a picture</button>
+        </div>
+      </div>
+      <div class="actions end">
+        <button type="button" class="go" id="btn-again">Play again</button>
+        <button type="button" id="btn-exit">Back to games</button>
+      </div>
+    </section>
+
+    <div class="host-tools" id="host-tools" hidden>
+      <button type="button" class="quiet" id="btn-end">End the game for everyone</button>
+      <button type="button" class="quiet" id="btn-quit">Leave the game</button>
+    </div>
+  </main>
+  <script src="__kolibri_games__/sdk.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

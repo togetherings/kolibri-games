@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.1
+
+- **Smoke Signals** (Sketches Morph Oddly, Kindling Excitement), a new Server Game: a drawing and
+  guessing game for 3 to 12 players, in the style of Telestrations. Someone starts a game and
+  others join with its code. Everyone writes a prompt; the next player draws it, the next guesses
+  the drawing, and so on; at the end everyone sees every chain and can save one as a picture.
+  Each step has a timer (quick, normal, relaxed or none), and the server hands in for players who
+  run out of time or leave, so the game never gets stuck. Coaches can limit first prompts to the
+  game's ideas and let only coaches start games. See docs/SMOKE_SIGNALS.md. Its zip is attached to
+  releases.
+- A new service for Server Games, `smoke-signals`, keeps rooms and their prompts, drawings and
+  guesses in two new tables (a new migration). Rooms are deleted 7 days after their last change.
+- `KG.saveFile(name, blob)`: games can let the player save a picture (PNG or JPEG) or a text file.
+  The games page saves it, since games run in a sandbox without downloads.
+- Games without scores have a **Play** button (not "Free play") and no Challenges button.
+
 ## 0.2.0
 
 - Games on the games page are told Kolibri's interface language (`language` in `KG.ready()`), so

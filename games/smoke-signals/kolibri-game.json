@@ -1,0 +1,65 @@
+{
+  "format": 1,
+  "type": "server",
+  "id": "org.togetherings.smoke-signals",
+  "version": "0.1.0",
+  "title": "Smoke Signals",
+  "description": "Sketches Morph Oddly, Kindling Excitement: write something, draw it, guess it, and pass it on. See how far each idea drifts by the end.",
+  "entry": "index.html",
+  "language": "en",
+  "requires_platform": ">=0.2.1",
+  "icon": "icon.svg",
+  "color": "#475569",
+  "service": "smoke-signals",
+  "words": {
+    "en": "words/en.txt"
+  },
+  "settings": [
+    {
+      "key": "speed",
+      "type": "choice",
+      "label": "Time for each turn",
+      "help": "Hosts can choose another speed for their own game.",
+      "default": "normal",
+      "choices": [
+        {"value": "quick", "label": "Quick: 60 seconds to draw, 30 to guess"},
+        {"value": "normal", "label": "Normal: 90 seconds to draw, 45 to guess"},
+        {"value": "relaxed", "label": "Relaxed: 2 minutes to draw, 60 seconds to guess"},
+        {"value": "none", "label": "No timer: the host decides when to stop waiting"}
+      ]
+    },
+    {
+      "key": "rounds",
+      "type": "integer",
+      "label": "Rounds (a drawing and a guess) in each chain, at least",
+      "help": "Bigger groups get more rounds, so every chain goes all the way round. Hosts can change this for their own game.",
+      "default": 3,
+      "min": 1,
+      "max": 6
+    },
+    {
+      "key": "prompts",
+      "type": "choice",
+      "label": "First prompts",
+      "default": "type",
+      "choices": [
+        {"value": "type", "label": "Players write their own, or pick an idea"},
+        {"value": "list", "label": "Players pick from the game's ideas only"}
+      ]
+    },
+    {
+      "key": "hosts",
+      "type": "choice",
+      "label": "Who can start a game",
+      "default": "anyone",
+      "choices": [
+        {"value": "anyone", "label": "Anyone"},
+        {"value": "coaches", "label": "Coaches only (learners join with a code)"}
+      ]
+    }
+  ],
+  "authors": [
+    "Togetherings"
+  ],
+  "license": "MIT"
+}

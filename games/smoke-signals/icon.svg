@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <rect width="96" height="96" rx="22" fill="#475569"/>
+  <!-- puffs of smoke rising from a small fire: an idea passed along -->
+  <circle cx="44" cy="54" r="9" fill="#e2e8f0"/>
+  <circle cx="55" cy="38" r="11" fill="#e2e8f0" opacity=".85"/>
+  <circle cx="44" cy="21" r="8" fill="#e2e8f0" opacity=".6"/>
+  <path d="M48 82 C 38 82, 34 74, 38 67 C 40 71, 43 72, 44 70 C 42 64, 46 60, 50 58 C 49 63, 53 65, 56 68 C 60 74, 57 82, 48 82 Z" fill="#fb923c"/>
+  <path d="M48 81 C 44 81, 42 77, 44 74 C 46 76, 48 75, 48 72 C 51 74, 53 78, 48 81 Z" fill="#fde68a"/>
+</svg>

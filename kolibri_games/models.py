@@ -132,3 +132,52 @@ class ArticleList(models.Model):
     titles = models.TextField(default="")
     created_by_id = models.CharField(max_length=32, blank=True)
     updated_at = models.DateTimeField()
+
+
+class Room(models.Model):
+    """A Smoke Signals game: the players who joined, its settings and which step it's on.
+
+    ``version`` goes up by one with every save, so two learners changing the room at
+    once can't overwrite each other's change (see store_django.room_save).
+    """
+
+    id = models.AutoField(primary_key=True)
+    game_key = models.CharField(max_length=120)
+    facility_id = models.CharField(max_length=32)
+    challenge_id = models.IntegerField(null=True, blank=True)
+    code = models.CharField(max_length=8)
+    status = models.CharField(max_length=8, default="lobby")  # lobby, playing, done, closed
+    host_id = models.CharField(max_length=32, null=True, blank=True)
+    players_json = models.TextField(default="[]")
+    settings_json = models.TextField(default="{}")
+    step = models.PositiveIntegerField(default=0)
+    steps = models.PositiveIntegerField(default=0)
+    deadline = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        indexes = [models.Index(fields=["facility_id", "game_key", "status"], name="kg_room_game")]
+
+    players = _json_property("players_json")
+    settings = _json_property("settings_json")
+
+
+class RoomEntry(models.Model):
+    """One hand-in in a Smoke Signals game: a prompt, a drawing or a guess, for one chain and step."""
+
+    id = models.AutoField(primary_key=True)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="entries")
+    chain = models.PositiveSmallIntegerField()
+    step = models.PositiveSmallIntegerField()
+    user_id = models.CharField(max_length=32)
+    kind = models.CharField(max_length=8)
+    content_json = models.TextField(default="{}")
+    auto = models.BooleanField(default=False)  # handed in by the server for someone out of time or gone
+    created_at = models.DateTimeField()
+
+    class Meta:
+        unique_together = [("room", "chain", "step")]
+
+    content = _json_property("content_json")

@@ -1,9 +1,9 @@
 """The service's store, backed by Kolibri's database."""
 import json
 
-from django.db import close_old_connections, connection
+from django.db import IntegrityError, close_old_connections, connection, transaction
 
-from .models import ArticleList, Attempt, Challenge, GameSettings, PlayerState
+from .models import ArticleList, Attempt, Challenge, GameSettings, PlayerState, Room, RoomEntry
 from .service import Store
 
 
@@ -114,6 +114,64 @@ class DjangoStore(Store):
 
     def article_list_delete(self, article_list):
         article_list.delete()
+
+    # ------------------------------------------------------------ Smoke Signals rooms
+
+    def rooms(self, game_key, facility_id, challenge_id, statuses):
+        return list(Room.objects.filter(game_key=game_key, facility_id=facility_id, challenge_id=challenge_id,
+                                        status__in=list(statuses)).order_by("id"))
+
+    def room_codes(self, facility_id):
+        return set(Room.objects.filter(facility_id=facility_id, status__in=["lobby", "playing"])
+                   .values_list("code", flat=True))
+
+    def room_get(self, room_id):
+        return Room.objects.filter(id=room_id).first()
+
+    def room_create(self, **fields):
+        json_fields = {k: fields.pop(k) for k in ("players", "settings")}
+        room = Room(**fields)
+        for k, v in json_fields.items():
+            setattr(room, k, v)
+        room.save()
+        return room
+
+    def room_save(self, room):
+        # One UPDATE that only matches the version that was read: if another
+        # request saved the room in between, nothing changes and the caller retries.
+        changed = Room.objects.filter(id=room.id, version=room.version).update(
+            status=room.status, host_id=room.host_id, players_json=room.players_json,
+            settings_json=room.settings_json, step=room.step, steps=room.steps, deadline=room.deadline,
+            updated_at=room.updated_at, version=room.version + 1,
+        )
+        if changed:
+            room.version += 1
+        return bool(changed)
+
+    def room_entries(self, room_id, chain=None, step=None):
+        qs = RoomEntry.objects.filter(room_id=room_id)
+        if chain is not None:
+            qs = qs.filter(chain=chain)
+        if step is not None:
+            qs = qs.filter(step=step)
+        return list(qs.order_by("step", "chain"))
+
+    def room_handed_in(self, room_id, step):
+        return set(RoomEntry.objects.filter(room_id=room_id, step=step).values_list("chain", flat=True))
+
+    def room_entry_add(self, **fields):
+        content = fields.pop("content")
+        entry = RoomEntry(**fields)
+        entry.content = content
+        try:
+            with transaction.atomic():
+                entry.save()
+        except IntegrityError:
+            return False  # this chain already has a hand-in for this step
+        return True
+
+    def rooms_delete_before(self, when):
+        Room.objects.filter(updated_at__lt=when).delete()
 
     # ---------------------------------------------------- games in channels
 
